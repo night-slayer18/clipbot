@@ -1,0 +1,51 @@
+# ClipBot Multi-Account Publishing Configuration
+# You can connect multiple YouTube channels, TikTok accounts, and Instagram pages
+# to distribute the same clips and multiply views and revenue.
+
+accounts:
+  youtube_shorts:
+    - id: "yt_main"
+      name: "Primary YouTube Shorts"
+      credentials_file: "data/credentials/youtube_token.json"
+      daily_limit: 4
+      enabled: true
+
+    # Example second YouTube channel (uncomment and authenticate via: clipbot auth youtube --account yt_secondary)
+    # - id: "yt_secondary"
+    #   name: "Secondary Highlights Channel"
+    #   credentials_file: "data/credentials/youtube_yt_secondary.json"
+    #   daily_limit: 4
+    #   enabled: true
+
+  tiktok:
+    - id: "tiktok_main"
+      name: "Primary TikTok Account"
+      credentials_file: "data/credentials/tiktok_token.json"
+      daily_limit: 3
+      enabled: true
+
+    # - id: "tiktok_secondary"
+    #   name: "Second TikTok Niche"
+    #   credentials_file: "data/credentials/tiktok_secondary.json"
+    #   daily_limit: 3
+    #   enabled: true
+
+  instagram_reels:
+    - id: "ig_main"
+      name: "Primary Instagram Reels"
+      credentials_file: "data/credentials/instagram_token.json"
+      daily_limit: 3
+      enabled: true
+
+    # - id: "ig_backup"
+    #   name: "Theme Page 2"
+    #   credentials_file: "data/credentials/instagram_ig_backup.json"
+    #   daily_limit: 3
+    #   enabled: true
+
+# Anti-Duplication Protection
+# Applies subtle visual/metadata variation per account so platforms don't flag clips as duplicate re-uploads
+anti_duplicate:
+  enabled: true
+  scramble_metadata: true   # Unique titles and tags per account
+  micro_trim: true          # Shifts trim by ±0.2s per account to generate unique SHA-256 hash

@@ -1,0 +1,32 @@
+# ClipBot Global Configuration
+
+database:
+  path: "data/state.db"
+
+storage:
+  media_dir: "data/media"      # Raw downloaded VODs/clips (deleted after render)
+  clips_dir: "data/clips"      # Final rendered 9:16 shorts
+  max_cache_gb: 50             # Delete oldest media when exceeding this
+
+pipeline:
+  cycle_interval_minutes: 120  # How often the full pipeline runs
+  max_clips_per_cycle: 10      # Max clips to render per run
+  min_clip_duration: 25        # Seconds
+  max_clip_duration: 60        # Seconds
+  min_gap_seconds: 60          # Minimum gap between two clips from the same source
+
+scoring:
+  profile: "gta_chaos"         # Default scoring profile
+  top_n: 20                    # Candidates to score per asset
+
+review:
+  host: "127.0.0.1"
+  port: 8000
+
+publish:
+  dry_run: true                # Set to false to actually post
+  posts_per_day:
+    youtube_shorts: 4
+    tiktok: 3
+    instagram_reels: 3
+  spread_hours: [9, 12, 17, 20]  # Preferred posting hours (local time)
