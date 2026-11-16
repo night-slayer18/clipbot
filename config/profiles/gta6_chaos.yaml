@@ -1,0 +1,29 @@
+# Grand Theft Auto VI (GTA 6) Chaos Profile — Vice City pursuits, shootouts, airboats, stunts
+name: "gta6_chaos"
+description: "High-action GTA 6: Vice City police pursuits, shootouts, explosions, WASTED moments, Leonida chaos"
+
+signal_weights:
+  audio_rms: 0.35          # Screaming, sirens, explosions, supercars
+  chat_velocity: 0.30      # Chat spike on KEKW / 💀 / GTA 6 hype
+  visual_wasted: 0.25      # 'WASTED' or 'BUSTED' screen detected
+  transcript_hype: 0.10    # 'Vice City', 'cops', 'wasted', 'run', 'shoot', 'busted'
+
+clip:
+  pre_pad_seconds: 5       # Roll back before action peak
+  post_pad_seconds: 7      # Keep aftermath & reaction
+  min_duration: 25
+  max_duration: 55
+
+chat_emotes:
+  high: ["GTA6", "VICECITY", "KEKW", "OMEGALUL", "💀", "LUL", "W", "LEONIDA"]
+  medium: ["WTF", "HUH", "OMG", "monkaW", "NOOO", "L", "CLIP", "HYPE"]
+  low: ["Pog", "PogChamp", "POGGERS"]
+
+transcript_keywords:
+  high: ["gta 6", "vice city", "wasted", "busted", "no way", "run", "shoot", "cops", "dead"]
+  medium: ["leonida", "police", "officer", "get in", "helicopter", "swat"]
+
+render:
+  layout: "split_stack"    # Facecam on top + gameplay on bottom
+  caption_style: "karaoke"
+  caption_color: "#FF007F" # Vice City neon pink/magenta

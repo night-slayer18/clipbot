@@ -1,0 +1,29 @@
+# GTA RP profile — roleplay drama, dialogue, character moments
+name: "gta_rp"
+description: "GTA Roleplay: emotional scenes, confrontations, funny dialogue, plot twists"
+
+signal_weights:
+  audio_rms: 0.20
+  chat_velocity: 0.40      # RP moments drive huge chat reactions
+  visual_wasted: 0.10
+  transcript_hype: 0.30    # Heavy on what's being SAID
+
+clip:
+  pre_pad_seconds: 6
+  post_pad_seconds: 8
+  min_duration: 30
+  max_duration: 60
+
+chat_emotes:
+  high: ["KEKW", "💀", "OMEGALUL", "ICANT", "😭", "bwo", "CAUGHT", "W", "L"]
+  medium: ["HUH", "WTF", "OMG", "monkaHmm", "PauseChamp", "Clap"]
+  low: ["Pog", "ez", "GG"]
+
+transcript_keywords:
+  high: ["I'm dead", "bro what", "no way", "that's crazy", "you're under arrest", "ten four"]
+  medium: ["officer", "10-13", "10-42", "roleplay", "character", "help"]
+
+render:
+  layout: "split_stack"
+  caption_style: "karaoke"
+  caption_color: "#00E5FF"  # Cyan for RP drama feel
