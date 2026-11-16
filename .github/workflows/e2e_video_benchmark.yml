@@ -6,7 +6,7 @@ on:
       video_url:
         description: "Target Video URL (YouTube, Twitch, or Direct MP4/Stream URL)"
         required: true
-        default: "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
+        default: "https://archive.org/download/big_buck_bunny_1080p_stereo/big_buck_bunny_1080p_stereo.mp4"
       mode:
         description: "Processing Mode"
         required: true
@@ -67,8 +67,8 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install -e .
+          python -m pip install --upgrade pip setuptools wheel yt-dlp
+          python -m pip install -e .
 
       - name: Run Highlights Clipping Pipeline
         if: ${{ inputs.mode == 'highlights' }}
