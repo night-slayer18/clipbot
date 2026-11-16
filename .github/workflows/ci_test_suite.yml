@@ -1,4 +1,4 @@
-name: ClipBot CI — Zero-Mock Integration Test Suite
+name: ClipBot CI
 
 on:
   push:

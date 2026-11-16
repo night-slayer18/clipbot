@@ -76,9 +76,15 @@ def score_and_window(
     # Build composite score (weighted sum)
     composite = np.zeros(min_len, dtype=np.float32)
     for signal_name, z in normalized.items():
+        if signal_name == "visual_intermission":
+            continue
         # Match by prefix: 'audio_rms' maps to weight key 'audio_rms'
         weight = weights.get(signal_name, 0.0)
         composite += z * weight
+
+    # Zero out / suppress candidate scoring during non-content screens (Starting Soon, BRB, End Credits)
+    intermission = signals.get("visual_intermission", np.zeros(min_len, dtype=np.float32))[:min_len]
+    composite[intermission > 0.5] = -999.0
 
     # Sliding window peak detection
     best_starts: list[tuple[float, int]] = []  # (score, start_idx)

@@ -1,4 +1,4 @@
-name: ClipBot E2E — 30-60 Min Real Video Benchmark & Artifacts
+name: ClipBot E2E
 
 on:
   workflow_dispatch:
@@ -73,8 +73,8 @@ jobs:
       - name: Run Highlights Clipping Pipeline
         if: ${{ inputs.mode == 'highlights' }}
         run: |
-          echo "Running Highlights Pipeline on ${{ inputs.video_url }} with profile ${{ inputs.profile }}"
-          clipbot test-clip "${{ inputs.video_url }}" --profile "${{ inputs.profile }}"
+          echo "Running Highlights Pipeline on ${{ inputs.video_url }} with profile ${{ inputs.profile }} (max ${{ inputs.max_clips }} clips)"
+          clipbot clip-url "${{ inputs.video_url }}" --profile "${{ inputs.profile }}" --max-clips ${{ inputs.max_clips }}
 
       - name: Run Movie Episodic Splitter
         if: ${{ inputs.mode == 'movie_split' }}

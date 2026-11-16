@@ -204,60 +204,86 @@ async def run_cycle(profile_name: str = "gta_chaos", auto_render: bool = True) -
     return processed_clips
 
 
-async def run_single_url_test(url: str, profile_name: str = "gta_chaos") -> Optional[Clip]:
-    """Directly test the full pipeline on a single URL."""
+async def process_url_pipeline(
+    url: str,
+    profile_name: str = "general_viral",
+    max_clips: int = 3,
+) -> list[Clip]:
+    """Execute the full highlights pipeline on a single URL, rendering up to max_clips."""
     config = get_config()
     db_path = config.database.path
     await init_db(db_path)
 
     storage = StorageManager()
-    logger.info(f"[TestClip] Testing pipeline on {url}")
+    logger.info(f"[ClipPipeline] Processing highlights on {url} (max {max_clips} clips)")
 
     from clipbot.adapters.downloader import MediaDownloader
     temp_media = storage.media_dir / "test_input.mp4"
     downloaded = await MediaDownloader.download_media(url, temp_media)
 
     asset = Asset(
-        external_id="test_clip",
-        creator="Test Creator",
-        title="Test Clip",
+        external_id="url_stream_clip",
+        creator="ClipBot Stream",
+        title="Stream Highlights",
         url=url,
         local_path=downloaded,
         status=AssetStatus.READY,
     )
+
+    db = await get_db(db_path)
+    await upsert_asset(db, asset)
 
     # Extract signals
     audio_det = AudioDetector()
     visual_det = VisualDetector()
     transcript_det = TranscriptDetector(model_size="base")
 
-    logger.info("[TestClip] Running detectors...")
+    logger.info("[ClipPipeline] Running multi-modal detectors...")
     signals = {}
     signals.update(await audio_det.signals(asset, downloaded))
     signals.update(await visual_det.signals(asset, downloaded))
     signals.update(await transcript_det.signals(asset, downloaded))
 
-    # Window
-    candidates = score_and_window(signals, profile_name=profile_name, top_n=1)
+    # Save signals
+    for name, arr in signals.items():
+        await upsert_signal(db, asset.id, name, arr)
+
+    # Window candidates (ignoring intermission and credits)
+    candidates = score_and_window(signals, profile_name=profile_name, top_n=max_clips)
     if not candidates:
-        logger.warning("[TestClip] No peaks found; using first 30 seconds")
+        logger.warning("[ClipPipeline] No peaks found; using opening segment")
         sig_len = float(len(next(iter(signals.values())))) if signals else 30.0
-        start, end = 0.0, min(30.0, sig_len)
-    else:
-        start, end = candidates[0].start, candidates[0].end
+        from clipbot.scoring.combine import ClipCandidate
+        candidates = [ClipCandidate(start=0.0, end=min(30.0, sig_len), score=1.0, breakdown={})]
+
+    logger.info(f"[ClipPipeline] Selected {len(candidates)} highlight candidate(s)")
 
     # Render
     compositor = VideoCompositor(profile_name=profile_name)
-    out_path = storage.clips_dir / "test_output_9x16.mp4"
-    rendered = await compositor.render_short(downloaded, start, end, out_path)
+    processed_clips: list[Clip] = []
 
-    clip = Clip(
-        asset_id="test_asset",
-        start_time=start,
-        end_time=end,
-        overall_score=candidates[0].score if candidates else 1.0,
-        rendered_clip_path=rendered,
-        title=generate_title(asset),
-    )
-    logger.success(f"[TestClip] Rendered test clip at: {rendered}")
-    return clip
+    for idx, cand in enumerate(candidates, 1):
+        filename = f"clip_highlight_{idx}_of_{len(candidates)}_9x16.mp4" if len(candidates) > 1 else "test_output_9x16.mp4"
+        out_path = storage.clips_dir / filename
+        logger.info(f"[ClipPipeline] Rendering highlight {idx}/{len(candidates)} [{cand.start:.1f}s -> {cand.end:.1f}s]")
+        rendered = await compositor.render_short(downloaded, cand.start, cand.end, out_path)
+
+        clip = Clip(
+            asset_id=asset.id,
+            start_time=cand.start,
+            end_time=cand.end,
+            overall_score=cand.score,
+            scores_breakdown=cand.breakdown,
+            rendered_clip_path=rendered,
+            status=ClipStatus.RENDERED,
+        )
+        clip.title = generate_title(asset, clip, profile_name=profile_name)
+        clip.tags = generate_tags(category=profile_name)
+        clip.description = generate_description(asset, clip.tags, profile_name=profile_name)
+
+        await insert_clip(db, clip)
+        processed_clips.append(clip)
+        logger.success(f"[ClipPipeline] Successfully queued clip: '{clip.title}' -> {rendered.name}")
+
+    await db.close()
+    return processed_clips

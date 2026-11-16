@@ -189,16 +189,17 @@ def publish(
     asyncio.run(mgr.dispatch_approved_clips(limit=limit, platform_filter=platform, account_filter=account))
 
 
-@app.command()
-def test_clip(
-    url: str = typer.Argument(..., help="URL of clip or video (Twitch, Kick, YouTube)"),
-    profile: str = typer.Option("gta_chaos", help="Scoring profile"),
+@app.command(name="clip-url")
+def clip_url(
+    url: str = typer.Argument(..., help="URL of stream or video (Twitch, Kick, YouTube)"),
+    profile: str = typer.Option("general_viral", "--profile", "-p", help="Scoring profile"),
+    max_clips: int = typer.Option(3, "--max-clips", "-c", help="Number of highlights to extract and render"),
 ) -> None:
-    """Test the full pipeline on a single URL: download -> score -> 9:16 render with captions."""
+    """Run full highlights pipeline on a target URL: download -> detect -> score -> render 9:16 vertical shorts."""
     setup_logging("DEBUG")
-    console.print(f"[bold cyan]🧪 Testing pipeline on URL:[/bold cyan] {url}")
-    from clipbot.pipeline import run_single_url_test
-    asyncio.run(run_single_url_test(url, profile_name=profile))
+    console.print(f"[bold cyan]🎬 Processing highlights on URL:[/bold cyan] {url} [dim](max {max_clips} clips)[/dim]")
+    from clipbot.pipeline import process_url_pipeline
+    asyncio.run(process_url_pipeline(url, profile_name=profile, max_clips=max_clips))
 
 
 @app.command()

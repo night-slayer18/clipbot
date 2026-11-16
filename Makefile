@@ -30,8 +30,8 @@ review:
 	$(PYTHON) -m clipbot.cli review --host 0.0.0.0 --port 8080
 
 run:
-	@if [ -z "$(URL)" ]; then echo "Error: URL is required. Example: make run URL=https://... [PROFILE=general_viral]"; exit 1; fi
-	$(PYTHON) -m clipbot.cli test-clip "$(URL)" $(if $(PROFILE),--profile "$(PROFILE)",)
+	@if [ -z "$(URL)" ]; then echo "Error: URL is required. Example: make run URL=https://... [PROFILE=general_viral] [MAX_CLIPS=3]"; exit 1; fi
+	$(PYTHON) -m clipbot.cli clip-url "$(URL)" $(if $(PROFILE),--profile "$(PROFILE)",) $(if $(MAX_CLIPS),--max-clips "$(MAX_CLIPS)",)
 
 split:
 	@if [ -z "$(URL)" ]; then echo "Error: URL is required. Example: make split URL=https://... [TITLE='Movie Title']"; exit 1; fi

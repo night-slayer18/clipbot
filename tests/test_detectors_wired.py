@@ -42,9 +42,11 @@ def test_visual_detector_real_video(tmp_path: Path):
     assert "visual_impact" in signals
     assert "visual_scene" in signals
     assert "visual_motion" in signals
+    assert "visual_intermission" in signals
     assert len(signals["visual_impact"]) >= 3
     assert len(signals["visual_scene"]) >= 3
     assert len(signals["visual_motion"]) >= 3
+    assert len(signals["visual_intermission"]) >= 3
 
 
 def test_facecam_crop_even_parity():
