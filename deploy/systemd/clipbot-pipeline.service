@@ -1,0 +1,17 @@
+[Unit]
+Description=ClipBot Pipeline — Universal Highlight Clipper & Episodic Publisher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/clipbot
+ExecStart=/opt/clipbot/.venv/bin/clipbot daemon --profile general_viral
+Restart=on-failure
+RestartSec=300
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=clipbot
+
+[Install]
+WantedBy=multi-user.target

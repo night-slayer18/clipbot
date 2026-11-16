@@ -1,0 +1,15 @@
+[Unit]
+Description=ClipBot Review UI — clip approval dashboard
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/clipbot
+ExecStart=/opt/clipbot/.venv/bin/clipbot review --host 0.0.0.0 --port 8000
+Restart=on-failure
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=clipbot-review
+
+[Install]
+WantedBy=multi-user.target
