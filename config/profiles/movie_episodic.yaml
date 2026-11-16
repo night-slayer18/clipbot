@@ -1,0 +1,18 @@
+# Movie Episodic Profile — Sequential Part 1, Part 2... 9:16 vertical shorts series
+name: "movie_episodic"
+description: "Long-form movie episodic splitter: slices full movies into sequential 55-65s parts with smart dialogue pause detection, progress bars, and series headers"
+
+episodic:
+  target_part_seconds: 58    # Ideal duration for TikTok / Reels
+  min_part_seconds: 48       # Earliest point to search for dialogue silence
+  max_part_seconds: 68       # Latest point to cut if no silence found
+  silence_thresh_db: -32     # Silence threshold in dB for cut points
+  silence_min_duration: 0.25 # Minimum silence duration to qualify as cut boundary
+
+render:
+  layout: "movie_episodic"   # Top banner (Title + Part #) + 16:9 movie center + bottom subtitles + progress bar
+  header_font: "Arial Black"
+  header_color: "#FFE600"    # Eye-catching yellow
+  progress_bar: true         # Animated visual progress bar
+  caption_style: "karaoke"
+  caption_color: "#FFFFFF"

@@ -1,0 +1,29 @@
+# General Viral Profile — Universal gaming, IRL streams, reactions, comedy
+name: "general_viral"
+description: "Universal viral clip detector for any game, streamer, podcast, or live show"
+
+signal_weights:
+  audio_rms: 0.35          # Volume spikes, screaming, laughing, gasps
+  audio_onset: 0.25        # Sudden audio punches
+  chat_velocity: 0.30      # Chat velocity spikes (KEKW, LUL, 💀, W)
+  transcript_hype: 0.10    # Shock keywords ("no way", "oh my god", "wait", "bro")
+
+clip:
+  pre_pad_seconds: 5
+  post_pad_seconds: 7
+  min_duration: 20
+  max_duration: 55
+
+chat_emotes:
+  high: ["KEKW", "OMEGALUL", "💀", "LUL", "W", "ICANT", "LMAO", "OMG"]
+  medium: ["WTF", "HUH", "NOOO", "L", "CLIP", "POG"]
+  low: ["GG", "EZ", "NICE"]
+
+transcript_keywords:
+  high: ["no way", "oh my god", "what", "bro", "dead", "unbelievable", "look at this"]
+  medium: ["wait", "stop", "help", "let's go"]
+
+render:
+  layout: "split_stack"    # Auto-detects facecam, falls back to blur canvas if no webcam
+  caption_style: "karaoke"
+  caption_color: "#FFE600" # High-contrast yellow

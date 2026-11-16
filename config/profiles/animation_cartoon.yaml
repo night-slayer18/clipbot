@@ -1,0 +1,28 @@
+# Animation & Slapstick Cartoon Profile (Tom & Jerry, Looney Tunes, Anime action)
+name: "animation_cartoon"
+description: "Slapstick cartoons & animation: physical comedy, crash sound effects, chases, screams, visual gags"
+
+signal_weights:
+  audio_rms: 0.35          # Orchestral swells, screams, explosions, hammer clanks
+  audio_onset: 0.45        # Sudden slapstick impact sound effects
+  visual_scene: 0.20       # Fast visual motion and scene cuts
+
+clip:
+  pre_pad_seconds: 4       # Setup of the prank/trap
+  post_pad_seconds: 6      # Reaction and comedic aftermath
+  min_duration: 15
+  max_duration: 45
+
+chat_emotes:
+  high: ["LMAO", "💀", "TOM", "JERRY", "NOSTALGIA", "CLASSIC", "🤣"]
+  medium: ["LOL", "EPIC", "RUN", "W", "CHILDHOOD"]
+  low: ["OMG", "NICE"]
+
+transcript_keywords:
+  high: ["ouch", "run", "help", "gotcha", "yikes"]
+  medium: ["cat", "mouse", "look out"]
+
+render:
+  layout: "blur_canvas"    # Crisp 4:3 or 16:9 classic animation centered on blurred canvas
+  caption_style: "karaoke"
+  caption_color: "#FFE600"
