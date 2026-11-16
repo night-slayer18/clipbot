@@ -23,7 +23,7 @@ from clipbot.core.models import Asset
 #   hsv_s < DESAT_THRESH  AND  red_ratio > RED_RATIO_THRESH
 # BUSTED screen is similar (blue-dominant) so we catch it with the desaturation
 # alone and then trust audio / chat to confirm.
-DESAT_THRESH = 50       # saturation channel threshold (0-255)
+DESAT_THRESH = 180      # saturation channel threshold (0-255)
 RED_RATIO_THRESH = 0.45  # R / (R+G+B) across full frame
 BLUE_RATIO_THRESH = 0.40  # B / (R+G+B) for BUSTED
 SAMPLE_FPS = 1          # sample one frame per second (fast enough, cheap)

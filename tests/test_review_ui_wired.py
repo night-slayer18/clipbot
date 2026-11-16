@@ -10,6 +10,7 @@ import httpx
 import pytest
 
 from clipbot.core.config import get_config
+from clipbot.core.db import init_db
 from clipbot.core.models import Asset, Clip, ClipStatus
 from clipbot.core.repository import insert_clip, upsert_asset
 from clipbot.review.app import create_app
@@ -51,6 +52,7 @@ async def test_review_ui_endpoints_wired(tmp_path: Path):
             tags=["test", "review"],
         )
 
+        await init_db(str(db_path))
         async with aiosqlite.connect(str(db_path)) as db:
             await upsert_asset(db, asset)
             await insert_clip(db, clip)
