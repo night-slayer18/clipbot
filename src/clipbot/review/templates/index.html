@@ -1,0 +1,543 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ClipBot Studio — Professional Highlight & Movie Review</title>
+
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            950: '#07090e',
+                            900: '#0d1117',
+                            850: '#131822',
+                            800: '#1b2230',
+                            700: '#283347',
+                            600: '#3d4d68',
+                        },
+                        brand: {
+                            primary: '#ffe600',
+                            primaryHover: '#f5dc00',
+                            accent: '#06b6d4',
+                            emerald: '#10b981',
+                            rose: '#f43f5e',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Plus Jakarta Sans', '-apple-system', 'BlinkMacSystemFont', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Google Fonts: Plus Jakarta Sans & JetBrains Mono -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- FontAwesome 6 Icons CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+
+    <style>
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #07090e;
+            color: #f1f5f9;
+        }
+        /* Custom scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0d1117; }
+        ::-webkit-scrollbar-thumb { background: #283347; border-radius: 9999px; }
+        ::-webkit-scrollbar-thumb:hover { background: #3d4d68; }
+
+        .glass-panel {
+            background: rgba(19, 24, 34, 0.75);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(40, 51, 71, 0.6);
+        }
+        .video-player-container video {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #000;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased selection:bg-brand-primary selection:text-black">
+
+    <!-- ── TOP NAVIGATION BAR ─────────────────────────────────────────────── -->
+    <header class="sticky top-0 z-40 glass-panel border-b border-dark-700/80 px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">
+        <!-- Brand & Engine Live Status -->
+        <div class="flex items-center gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-brand-primary via-amber-400 to-yellow-600 flex items-center justify-center text-black font-extrabold text-lg shadow-lg shadow-yellow-500/20">
+                    <i class="fa-solid fa-bolt"></i>
+                </div>
+                <div>
+                    <div class="flex items-center gap-2">
+                        <h1 class="text-lg font-extrabold tracking-tight text-white leading-none">ClipBot <span class="text-brand-primary font-bold">Studio</span></h1>
+                        <span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex items-center gap-1">
+                            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Production
+                        </span>
+                    </div>
+                    <p class="text-xs text-dark-600 font-medium mt-0.5">Automated Multi-Niche Clipping & Episodic Publishing</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Global KPI Metrics Bar -->
+        <div class="flex items-center gap-3 flex-wrap text-xs">
+            <div class="glass-panel px-3.5 py-2 rounded-xl flex items-center gap-2.5">
+                <div class="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold">
+                    <i class="fa-solid fa-hourglass-half text-xs"></i>
+                </div>
+                <div>
+                    <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Pending</div>
+                    <div class="text-sm font-bold font-mono text-white" id="statPending">-</div>
+                </div>
+            </div>
+
+            <div class="glass-panel px-3.5 py-2 rounded-xl flex items-center gap-2.5">
+                <div class="w-7 h-7 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold">
+                    <i class="fa-solid fa-check text-xs"></i>
+                </div>
+                <div>
+                    <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Approved</div>
+                    <div class="text-sm font-bold font-mono text-emerald-400" id="statApproved">-</div>
+                </div>
+            </div>
+
+            <div class="glass-panel px-3.5 py-2 rounded-xl flex items-center gap-2.5">
+                <div class="w-7 h-7 rounded-lg bg-cyan-500/10 text-cyan-400 flex items-center justify-center font-bold">
+                    <i class="fa-solid fa-paper-plane text-xs"></i>
+                </div>
+                <div>
+                    <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Published</div>
+                    <div class="text-sm font-bold font-mono text-cyan-400" id="statPublished">-</div>
+                </div>
+            </div>
+
+            <button onclick="loadClips()" class="w-9 h-9 rounded-xl bg-dark-800 hover:bg-dark-700 text-slate-300 hover:text-white flex items-center justify-center transition border border-dark-700" title="Refresh Dashboard">
+                <i class="fa-solid fa-rotate text-sm"></i>
+            </button>
+        </div>
+    </header>
+
+    <!-- ── SECONDARY TOOLBAR: SEARCH & CATEGORY CHIPS ────────────────────── -->
+    <div class="border-b border-dark-700/60 bg-dark-900/60 px-6 py-3 flex flex-wrap items-center justify-between gap-4 text-xs font-semibold">
+        <!-- Tabs: Status -->
+        <div class="flex items-center gap-1.5 p-1 bg-dark-950/80 rounded-xl border border-dark-700/80">
+            <button onclick="setTab('pending')" id="tab-pending" class="tab-btn active px-3.5 py-1.5 rounded-lg text-white font-bold bg-dark-800 border border-dark-700 shadow-sm flex items-center gap-2">
+                <i class="fa-solid fa-inbox text-amber-400"></i> Pending Review
+            </button>
+            <button onclick="setTab('approved')" id="tab-approved" class="tab-btn px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white font-medium transition flex items-center gap-2">
+                <i class="fa-solid fa-circle-check text-emerald-400"></i> Approved Queue
+            </button>
+            <button onclick="setTab('all')" id="tab-all" class="tab-btn px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white font-medium transition flex items-center gap-2">
+                <i class="fa-solid fa-clock-rotate-left text-slate-400"></i> All History
+            </button>
+        </div>
+
+        <!-- Realtime Search Bar -->
+        <div class="flex items-center gap-3 flex-1 max-w-md">
+            <div class="relative w-full">
+                <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500"></i>
+                <input type="text" id="searchInput" oninput="handleSearch()" placeholder="Search title, creator, series..." class="w-full bg-dark-950/90 border border-dark-700 rounded-xl pl-9 pr-4 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-brand-primary transition">
+            </div>
+        </div>
+
+        <!-- Quick Filter Niche Chips -->
+        <div class="flex items-center gap-1.5 overflow-x-auto py-0.5">
+            <button onclick="setNicheFilter('all', this)" class="niche-chip active px-3 py-1 rounded-full text-[11px] font-bold bg-brand-primary text-black">All</button>
+            <button onclick="setNicheFilter('gta6', this)" class="niche-chip px-3 py-1 rounded-full text-[11px] font-medium bg-dark-800 text-slate-300 hover:bg-dark-700">🌴 GTA 6 / VI</button>
+            <button onclick="setNicheFilter('movie', this)" class="niche-chip px-3 py-1 rounded-full text-[11px] font-medium bg-dark-800 text-slate-300 hover:bg-dark-700">🍿 Movies (Parts)</button>
+            <button onclick="setNicheFilter('cricket', this)" class="niche-chip px-3 py-1 rounded-full text-[11px] font-medium bg-dark-800 text-slate-300 hover:bg-dark-700">🏏 Cricket</button>
+            <button onclick="setNicheFilter('nba', this)" class="niche-chip px-3 py-1 rounded-full text-[11px] font-medium bg-dark-800 text-slate-300 hover:bg-dark-700">🏀 Basketball</button>
+            <button onclick="setNicheFilter('football', this)" class="niche-chip px-3 py-1 rounded-full text-[11px] font-medium bg-dark-800 text-slate-300 hover:bg-dark-700">⚽ Football</button>
+            <button onclick="setNicheFilter('cartoon', this)" class="niche-chip px-3 py-1 rounded-full text-[11px] font-medium bg-dark-800 text-slate-300 hover:bg-dark-700">🐱 Cartoon</button>
+        </div>
+    </div>
+
+    <!-- ── MAIN CONTENT GRID ─────────────────────────────────────────────── -->
+    <main class="flex-1 max-w-[1600px] w-full mx-auto px-6 py-6">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" id="clipsGrid">
+            <!-- Loading state placeholder -->
+            <div class="col-span-full py-24 text-center">
+                <i class="fa-solid fa-circle-notch fa-spin text-3xl text-brand-primary mb-3"></i>
+                <h3 class="text-base font-bold text-white">Loading clips...</h3>
+                <p class="text-xs text-slate-500 mt-1">Connecting to state database</p>
+            </div>
+        </div>
+    </main>
+
+    <!-- ── TOAST NOTIFICATION CONTAINER ──────────────────────────────────── -->
+    <div id="toastContainer" class="fixed bottom-6 right-6 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <!-- ── CLIENT SCRIPT ─────────────────────────────────────────────────── -->
+    <script>
+        let allClips = [];
+        let currentTab = 'pending';
+        let currentNiche = 'all';
+
+        async function fetchStats() {
+            try {
+                const res = await fetch('/api/stats');
+                const data = await res.json();
+                document.getElementById('statPending').textContent = data.pending_clips;
+                document.getElementById('statApproved').textContent = data.approved_clips;
+                document.getElementById('statPublished').textContent = data.published_clips;
+            } catch (e) {
+                console.error("Stats fetch error:", e);
+            }
+        }
+
+        async function loadClips() {
+            const grid = document.getElementById('clipsGrid');
+            grid.innerHTML = `
+                <div class="col-span-full py-24 text-center">
+                    <i class="fa-solid fa-circle-notch fa-spin text-3xl text-brand-primary mb-3"></i>
+                    <h3 class="text-base font-bold text-white">Fetching Clips...</h3>
+                    <p class="text-xs text-slate-500 mt-1">Status: ${currentTab}</p>
+                </div>
+            `;
+
+            try {
+                const res = await fetch(`/api/clips?status=${currentTab}`);
+                const data = await res.json();
+                allClips = data.clips || [];
+                renderFilteredClips();
+            } catch (e) {
+                grid.innerHTML = `
+                    <div class="col-span-full py-20 text-center glass-panel rounded-2xl border border-red-500/20">
+                        <i class="fa-solid fa-triangle-exclamation text-3xl text-rose-500 mb-3"></i>
+                        <h3 class="text-base font-bold text-white">Unable to Load Clips</h3>
+                        <p class="text-xs text-slate-400 mt-1">${e.message}</p>
+                    </div>
+                `;
+            }
+        }
+
+        function renderFilteredClips() {
+            const query = document.getElementById('searchInput').value.toLowerCase().trim();
+            const grid = document.getElementById('clipsGrid');
+
+            let filtered = allClips.filter(c => {
+                // Search filter
+                const matchesSearch = !query || 
+                    (c.title || '').toLowerCase().includes(query) ||
+                    (c.creator || '').toLowerCase().includes(query) ||
+                    (c.asset_title || '').toLowerCase().includes(query);
+
+                // Niche filter
+                let matchesNiche = true;
+                if (currentNiche === 'movie') {
+                    matchesNiche = (c.title || '').includes('Part') || (c.asset_title || '').includes('Movie');
+                } else if (currentNiche === 'gta6' || currentNiche === 'gta') {
+                    matchesNiche = (c.title || '').toLowerCase().includes('gta') || (c.asset_title || '').toLowerCase().includes('gta') || (c.game || '').toLowerCase().includes('gta');
+                } else if (currentNiche === 'cricket') {
+                    matchesNiche = (c.title || '').toLowerCase().includes('cricket') || (c.tags || []).some(t => t.includes('cricket'));
+                } else if (currentNiche === 'nba') {
+                    matchesNiche = (c.title || '').toLowerCase().includes('nba') || (c.tags || []).some(t => t.includes('nba') || t.includes('basketball'));
+                } else if (currentNiche === 'football') {
+                    matchesNiche = (c.title || '').toLowerCase().includes('football') || (c.title || '').toLowerCase().includes('soccer');
+                } else if (currentNiche === 'cartoon') {
+                    matchesNiche = (c.title || '').toLowerCase().includes('jerry') || (c.title || '').toLowerCase().includes('cartoon');
+                }
+
+                return matchesSearch && matchesNiche;
+            });
+
+            if (filtered.length === 0) {
+                grid.innerHTML = `
+                    <div class="col-span-full py-24 text-center glass-panel rounded-3xl border border-dashed border-dark-700">
+                        <div class="w-16 h-16 rounded-2xl bg-dark-800 text-slate-500 flex items-center justify-center text-2xl mx-auto mb-3">
+                            <i class="fa-solid fa-clapperboard"></i>
+                        </div>
+                        <h3 class="text-base font-bold text-white">No Clips Found</h3>
+                        <p class="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                            No clips match the "${currentTab}" tab and current filters. Run <code>clipbot run</code> or <code>clipbot split-movie</code> to generate new candidates.
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+
+            grid.innerHTML = filtered.map(c => renderClipCard(c)).join('');
+        }
+
+        function renderClipCard(c) {
+            const videoUrl = `/video/${c.id}`;
+            const breakdown = c.scores_breakdown || {};
+            const scoreVal = Number(c.overall_score || 0).toFixed(2);
+
+            // Source Badge Icon
+            let sourceIcon = 'fa-brands fa-twitch text-purple-400';
+            if (c.source === 'kick') sourceIcon = 'fa-solid fa-k text-emerald-400';
+            else if (c.source === 'youtube') sourceIcon = 'fa-brands fa-youtube text-red-500';
+
+            const isMoviePart = (c.title || '').includes('Part');
+
+            return `
+                <div class="glass-panel rounded-2xl overflow-hidden flex flex-col border border-dark-700 hover:border-dark-600 transition duration-200 group shadow-xl shadow-black/40" id="card-${c.id}">
+                    <!-- 9:16 Video Canvas -->
+                    <div class="relative bg-black aspect-[9/16] max-h-[460px] flex items-center justify-center overflow-hidden video-player-container">
+                        ${c.rendered_clip_path ? `
+                            <video src="${videoUrl}" controls preload="metadata" playsinline class="rounded-t-2xl"></video>
+                        ` : `
+                            <div class="flex flex-col items-center justify-center text-slate-500 gap-2">
+                                <i class="fa-solid fa-gear fa-spin text-2xl text-amber-400"></i>
+                                <span class="text-xs font-semibold">Rendering in progress...</span>
+                            </div>
+                        `}
+
+                        <!-- Floating Badges -->
+                        <div class="absolute top-3 left-3 flex items-center gap-1.5">
+                            <span class="px-2.5 py-1 rounded-lg bg-black/80 backdrop-blur-md text-[10px] font-bold text-white border border-white/10 flex items-center gap-1.5">
+                                <i class="${sourceIcon}"></i>
+                                ${isMoviePart ? 'MOVIE' : (c.source || 'clip').toUpperCase()}
+                            </span>
+                        </div>
+
+                        <div class="absolute top-3 right-3 flex items-center gap-1.5">
+                            <span class="px-2.5 py-1 rounded-lg bg-black/85 backdrop-blur-md text-[11px] font-mono font-bold text-brand-primary border border-brand-primary/40 flex items-center gap-1 shadow-lg">
+                                <i class="fa-solid fa-star text-xs"></i> ${scoreVal}
+                            </span>
+                        </div>
+
+                        <div class="absolute bottom-3 right-3">
+                            <span class="px-2 py-0.5 rounded-md bg-black/75 backdrop-blur-sm text-[10px] font-mono text-slate-300">
+                                ${Math.max(0, (c.end_time || 0) - (c.start_time || 0)).toFixed(1)}s
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Card Body -->
+                    <div class="p-4 flex-1 flex flex-col gap-3.5 bg-dark-900/40">
+                        <!-- Creator & Source Link -->
+                        <div class="flex items-center justify-between text-xs text-slate-400">
+                            <span class="font-medium truncate max-w-[180px] flex items-center gap-1.5">
+                                <i class="fa-solid fa-circle-user text-slate-500"></i>
+                                <strong class="text-slate-200">${c.creator || 'Creator'}</strong>
+                            </span>
+                            ${c.asset_url ? `
+                                <a href="${c.asset_url}" target="_blank" class="text-[11px] text-brand-accent hover:underline flex items-center gap-1" title="View Source">
+                                    Source <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+                                </a>
+                            ` : ''}
+                        </div>
+
+                        <!-- Editable Title -->
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Title</label>
+                            <input type="text" id="title-${c.id}" value="${c.title || ''}" class="w-full bg-dark-950 border border-dark-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-white focus:outline-none focus:border-brand-primary transition">
+                        </div>
+
+                        <!-- Editable Description & Tags -->
+                        <div class="flex flex-col gap-1">
+                            <label class="text-[10px] font-bold uppercase tracking-wider text-slate-500">Description</label>
+                            <textarea id="desc-${c.id}" rows="2" class="w-full bg-dark-950 border border-dark-700 rounded-lg px-2.5 py-1.5 text-[11px] text-slate-300 focus:outline-none focus:border-brand-primary transition resize-none">${c.description || ''}</textarea>
+                        </div>
+
+                        <!-- Precision Trim Scrubbing -->
+                        <div class="bg-dark-950 p-2.5 rounded-xl border border-dark-700 flex flex-col gap-2">
+                            <div class="flex items-center justify-between text-[10px] uppercase font-bold text-slate-400">
+                                <span><i class="fa-solid fa-scissors text-slate-500 mr-1"></i> Trim Bounds</span>
+                                <span class="font-mono text-slate-500">Dur: <span id="dur-${c.id}">${(c.end_time - c.start_time).toFixed(1)}</span>s</span>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-2 text-xs">
+                                <div class="flex items-center bg-dark-900 rounded-lg border border-dark-700 px-2 py-1">
+                                    <span class="text-[10px] text-slate-500 mr-1 font-bold">IN:</span>
+                                    <input type="number" step="0.5" id="start-${c.id}" value="${Number(c.start_time || 0).toFixed(1)}" class="w-full bg-transparent font-mono text-white text-xs focus:outline-none" onchange="updateDuration('${c.id}')">
+                                </div>
+                                <div class="flex items-center bg-dark-900 rounded-lg border border-dark-700 px-2 py-1">
+                                    <span class="text-[10px] text-slate-500 mr-1 font-bold">OUT:</span>
+                                    <input type="number" step="0.5" id="end-${c.id}" value="${Number(c.end_time || 0).toFixed(1)}" class="w-full bg-transparent font-mono text-white text-xs focus:outline-none" onchange="updateDuration('${c.id}')">
+                                </div>
+                            </div>
+
+                            <button onclick="reRenderClip('${c.id}')" id="btn-render-${c.id}" class="w-full py-1 rounded-lg bg-dark-800 hover:bg-dark-700 text-slate-300 hover:text-white text-[11px] font-semibold border border-dark-700 flex items-center justify-center gap-1.5 transition">
+                                <i class="fa-solid fa-arrows-rotate text-[10px]"></i> Re-Render Clip
+                            </button>
+                        </div>
+
+                        <!-- Primary Action Buttons -->
+                        <div class="grid grid-cols-2 gap-2 pt-2 mt-auto border-t border-dark-700/60">
+                            <button onclick="rejectClip('${c.id}')" class="py-2 px-3 rounded-xl bg-dark-800/80 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 border border-rose-500/30 text-xs font-bold flex items-center justify-center gap-1.5 transition">
+                                <i class="fa-solid fa-xmark"></i> Reject
+                            </button>
+                            <button onclick="approveClip('${c.id}')" class="py-2 px-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-extrabold flex items-center justify-center gap-1.5 shadow-lg shadow-emerald-500/20 transition">
+                                <i class="fa-solid fa-check"></i> Approve
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function updateDuration(id) {
+            const start = parseFloat(document.getElementById(`start-${id}`).value) || 0;
+            const end = parseFloat(document.getElementById(`end-${id}`).value) || 0;
+            const durEl = document.getElementById(`dur-${id}`);
+            if (durEl) {
+                durEl.textContent = Math.max(0, end - start).toFixed(1);
+            }
+        }
+
+        async function approveClip(id) {
+            const title = document.getElementById(`title-${id}`).value;
+            const desc = document.getElementById(`desc-${id}`).value;
+
+            try {
+                const res = await fetch(`/api/clips/${id}/approve`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title, description: desc }),
+                });
+
+                if (res.ok) {
+                    const card = document.getElementById(`card-${id}`);
+                    card.classList.add('opacity-30', 'pointer-events-none', 'scale-95');
+                    showToast('Clip Approved & Added to Publish Queue!', 'success');
+                    fetchStats();
+                }
+            } catch (e) {
+                showToast('Failed to approve clip: ' + e.message, 'error');
+            }
+        }
+
+        async function rejectClip(id) {
+            try {
+                const res = await fetch(`/api/clips/${id}/reject`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ reason: 'rejected_in_ui' }),
+                });
+
+                if (res.ok) {
+                    const card = document.getElementById(`card-${id}`);
+                    card.classList.add('opacity-20', 'pointer-events-none');
+                    showToast('Clip Rejected', 'info');
+                    fetchStats();
+                }
+            } catch (e) {
+                showToast('Failed to reject: ' + e.message, 'error');
+            }
+        }
+
+        async function reRenderClip(id) {
+            const start = parseFloat(document.getElementById(`start-${id}`).value);
+            const end = parseFloat(document.getElementById(`end-${id}`).value);
+            const btn = document.getElementById(`btn-render-${id}`);
+
+            btn.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-[10px]"></i> Rendering...`;
+            btn.disabled = true;
+
+            try {
+                const res = await fetch(`/api/clips/${id}/re-render`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ start_time: start, end_time: end }),
+                });
+
+                if (res.ok) {
+                    showToast('✓ Clip Re-Rendered Successfully!', 'success');
+                    btn.innerHTML = `<i class="fa-solid fa-check text-emerald-400"></i> Done`;
+                    setTimeout(() => {
+                        btn.innerHTML = `<i class="fa-solid fa-arrows-rotate text-[10px]"></i> Re-Render Clip`;
+                        btn.disabled = false;
+                    }, 2000);
+
+                    // Refresh video element source
+                    const card = document.getElementById(`card-${id}`);
+                    const vid = card.querySelector('video');
+                    if (vid) {
+                        vid.src = `/video/${id}?t=${Date.now()}`;
+                    }
+                } else {
+                    const err = await res.json();
+                    showToast('Render failed: ' + (err.detail || 'Error'), 'error');
+                    btn.innerHTML = `Error`;
+                    btn.disabled = false;
+                }
+            } catch (e) {
+                showToast('Render error: ' + e.message, 'error');
+                btn.innerHTML = `Error`;
+                btn.disabled = false;
+            }
+        }
+
+        function setTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(b => {
+                b.classList.remove('active', 'bg-dark-800', 'text-white', 'border', 'border-dark-700', 'shadow-sm');
+                b.classList.add('text-slate-400');
+            });
+            const activeBtn = document.getElementById(`tab-${tab}`);
+            if (activeBtn) {
+                activeBtn.classList.add('active', 'bg-dark-800', 'text-white', 'border', 'border-dark-700', 'shadow-sm');
+                activeBtn.classList.remove('text-slate-400');
+            }
+            loadClips();
+        }
+
+        function setNicheFilter(niche, btn) {
+            currentNiche = niche;
+            document.querySelectorAll('.niche-chip').forEach(b => {
+                b.classList.remove('active', 'bg-brand-primary', 'text-black', 'font-bold');
+                b.classList.add('bg-dark-800', 'text-slate-300');
+            });
+            const targetBtn = btn || (typeof event !== 'undefined' ? event.target : null);
+            if (targetBtn) {
+                targetBtn.classList.add('active', 'bg-brand-primary', 'text-black', 'font-bold');
+                targetBtn.classList.remove('bg-dark-800', 'text-slate-300');
+            }
+            renderFilteredClips();
+        }
+
+        function handleSearch() {
+            renderFilteredClips();
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const toast = document.createElement('div');
+            
+            let bgStyle = 'bg-dark-900 border-dark-700 text-white';
+            let icon = 'fa-solid fa-circle-info text-cyan-400';
+
+            if (type === 'success') {
+                bgStyle = 'bg-dark-900 border-emerald-500/40 text-emerald-200';
+                icon = 'fa-solid fa-circle-check text-emerald-400';
+            } else if (type === 'error') {
+                bgStyle = 'bg-dark-900 border-rose-500/40 text-rose-200';
+                icon = 'fa-solid fa-triangle-exclamation text-rose-400';
+            }
+
+            toast.className = `pointer-events-auto px-4 py-3 rounded-xl border shadow-2xl flex items-center gap-3 text-xs font-semibold transform transition duration-300 translate-y-2 ${bgStyle}`;
+            toast.innerHTML = `<i class="${icon}"></i> <span>${message}</span>`;
+            
+            container.appendChild(toast);
+            setTimeout(() => toast.classList.remove('translate-y-2'), 10);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-x-4');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Initialize dashboard
+        fetchStats();
+        loadClips();
+    </script>
+</body>
+</html>
