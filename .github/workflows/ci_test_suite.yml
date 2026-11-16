@@ -43,11 +43,11 @@ jobs:
       - name: Install Project Dependencies
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install -e .
+          python -m pip install -e ".[dev,test]"
 
       - name: Run Zero-Mock Integration Test Suite
         run: |
-          pytest tests/ -v --durations=10
+          python -m pytest tests/ -v --durations=10
 
       - name: Verify CLI Commands
         run: |
