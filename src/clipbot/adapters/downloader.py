@@ -35,7 +35,7 @@ class MediaDownloader:
         url: str,
         output_path: Path,
         max_duration: int | None = None,
-        timeout_seconds: int = 300,
+        timeout_seconds: int = 3600,
     ) -> Path:
         """
         Download video from any supported URL (Twitch, Kick, YouTube, etc.) to output_path.
@@ -45,12 +45,15 @@ class MediaDownloader:
             logger.debug(f"[Downloader] Cache hit: {output_path.name}")
             return output_path
 
-        # Standard best quality mp4 format selector
+        # Standard best quality mp4 format selector with parallel fragment downloads for HLS streams
         format_spec = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best[ext=mp4]/best"
         cmd = [
             "yt-dlp",
             "--no-playlist",
             "--no-warnings",
+            "--concurrent-fragments", "5",
+            "--retries", "10",
+            "--fragment-retries", "10",
             "-f", format_spec,
             "--merge-output-format", "mp4",
             "-o", str(output_path),

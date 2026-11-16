@@ -274,7 +274,7 @@ class MovieSplitter:
             logger.info(f"[MovieSplitter] Downloading movie from: {movie_input}")
             safe_title = "".join(c for c in title if c.isalnum() or c in " _-").strip()
             movie_file = media_dir / f"{safe_title}.mp4"
-            movie_file = await MediaDownloader.download_media(movie_input, movie_file, timeout_seconds=1800)
+            movie_file = await MediaDownloader.download_media(movie_input, movie_file, timeout_seconds=3600)
         else:
             movie_file = Path(movie_input)
             if not movie_file.exists():
