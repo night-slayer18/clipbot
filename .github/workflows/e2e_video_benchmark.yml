@@ -1,0 +1,100 @@
+name: ClipBot E2E — 30-60 Min Real Video Benchmark & Artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      video_url:
+        description: "Target Video URL (YouTube, Twitch, or Direct MP4/Stream URL)"
+        required: true
+        default: "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
+      mode:
+        description: "Processing Mode"
+        required: true
+        type: choice
+        options:
+          - "highlights"
+          - "movie_split"
+        default: "highlights"
+      profile:
+        description: "Scoring Profile"
+        required: true
+        type: choice
+        options:
+          - "gta6_chaos"
+          - "basketball_nba"
+          - "cricket"
+          - "football_soccer"
+          - "animation_cartoon"
+          - "movie_episodic"
+          - "general_viral"
+        default: "general_viral"
+      title:
+        description: "Display Title for Movie or Highlights"
+        required: false
+        default: "Benchmark Stream Test"
+      max_clips:
+        description: "Maximum Clips or Parts to Render"
+        required: false
+        default: "2"
+
+jobs:
+  benchmark-pipeline:
+    name: Run Long-Form Video Pipeline
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install System Binaries & Multilingual Fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg \
+            libass9 \
+            libgl1 \
+            libglib2.0-0 \
+            fonts-noto-core \
+            fonts-indic \
+            fonts-dejavu-core
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+
+      - name: Run Highlights Clipping Pipeline
+        if: ${{ inputs.mode == 'highlights' }}
+        run: |
+          echo "Running Highlights Pipeline on ${{ inputs.video_url }} with profile ${{ inputs.profile }}"
+          clipbot test-clip "${{ inputs.video_url }}" --profile "${{ inputs.profile }}"
+
+      - name: Run Movie Episodic Splitter
+        if: ${{ inputs.mode == 'movie_split' }}
+        run: |
+          echo "Running Episodic Movie Splitter on ${{ inputs.video_url }}"
+          clipbot split-movie "${{ inputs.video_url }}" --title "${{ inputs.title }}" --max-parts ${{ inputs.max_clips }}
+
+      - name: Inspect Generated Files & SQLite State
+        run: |
+          clipbot status
+          echo "=== Rendered Clips in data/clips ==="
+          ls -lh data/clips/ || echo "No data/clips directory"
+
+      - name: Upload Rendered 9:16 Shorts as Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: clipbot-rendered-shorts-${{ inputs.profile }}-${{ github.run_id }}
+          path: |
+            data/clips/*.mp4
+            data/clips/**/*.mp4
+            data/state.db
+          retention-days: 7
+          if-no-files-found: warn

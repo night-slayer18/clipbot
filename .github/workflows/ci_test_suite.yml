@@ -1,0 +1,56 @@
+name: ClipBot CI — Zero-Mock Integration Test Suite
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  integration-tests:
+    name: Zero-Mock Real-Media Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install System Binaries & Unicode Subtitle Fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ffmpeg \
+            libass9 \
+            libgl1 \
+            libglib2.0-0 \
+            fonts-noto-core \
+            fonts-indic \
+            fonts-dejavu-core
+
+      - name: Verify FFmpeg and libass Support
+        run: |
+          ffmpeg -version
+          ffmpeg -filters | grep ass || echo "Warning: ass filter check"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Project Dependencies
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -e .
+
+      - name: Run Zero-Mock Integration Test Suite
+        run: |
+          pytest tests/ -v --durations=10
+
+      - name: Verify CLI Commands
+        run: |
+          clipbot --help
+          clipbot auth status
+          clipbot status
