@@ -5,7 +5,7 @@ description: "GTA Roleplay: emotional scenes, confrontations, funny dialogue, pl
 signal_weights:
   audio_rms: 0.20
   chat_velocity: 0.40      # RP moments drive huge chat reactions
-  visual_wasted: 0.10
+  visual_impact: 0.10
   transcript_hype: 0.30    # Heavy on what's being SAID
 
 clip:

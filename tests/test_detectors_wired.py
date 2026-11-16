@@ -14,21 +14,21 @@ from clipbot.detectors.audio import AudioDetector
 from clipbot.detectors.chat import ChatDetector
 from clipbot.detectors.facecam import FacecamBox, FacecamDetector
 from clipbot.detectors.transcript import TranscriptDetector, _keyword_score
-from clipbot.detectors.visual import VisualDetector, _frame_is_wasted
+from clipbot.detectors.visual import VisualDetector, _detect_impact_vignette
 from tests.conftest import generate_real_mp4, generate_real_wav
 
 
-def test_visual_detector_wasted_screen():
-    # 1. Normal colored frame (not wasted)
+def test_visual_detector_impact_vignette():
+    # 1. Normal colored frame (no impact vignette)
     normal_frame = np.full((360, 640, 3), (120, 180, 50), dtype=np.uint8)
-    assert _frame_is_wasted(normal_frame) == 0.0
+    assert _detect_impact_vignette(normal_frame) == 0.0
 
-    # 2. Desaturated red dominant frame (GTA V WASTED screen)
-    wasted_frame = np.zeros((360, 640, 3), dtype=np.uint8)
-    wasted_frame[:, :, 2] = 160  # Red
-    wasted_frame[:, :, 1] = 50   # Green
-    wasted_frame[:, :, 0] = 50   # Blue
-    assert _frame_is_wasted(wasted_frame) == 1.0
+    # 2. High-impact red vignette / damage flash
+    impact_frame = np.zeros((360, 640, 3), dtype=np.uint8)
+    impact_frame[:, :, 2] = 160  # Red
+    impact_frame[:, :, 1] = 50   # Green
+    impact_frame[:, :, 0] = 50   # Blue
+    assert _detect_impact_vignette(impact_frame) == 1.0
 
 
 def test_visual_detector_real_video(tmp_path: Path):
@@ -39,10 +39,12 @@ def test_visual_detector_real_video(tmp_path: Path):
     det = VisualDetector()
     signals = det._analyse_sync(video_file, asset)
 
-    assert "visual_wasted" in signals
+    assert "visual_impact" in signals
     assert "visual_scene" in signals
-    assert len(signals["visual_wasted"]) >= 3
+    assert "visual_motion" in signals
+    assert len(signals["visual_impact"]) >= 3
     assert len(signals["visual_scene"]) >= 3
+    assert len(signals["visual_motion"]) >= 3
 
 
 def test_facecam_crop_even_parity():

@@ -5,7 +5,7 @@ description: "High-action GTA 6: Vice City police pursuits, shootouts, explosion
 signal_weights:
   audio_rms: 0.35          # Screaming, sirens, explosions, supercars
   chat_velocity: 0.30      # Chat spike on KEKW / 💀 / GTA 6 hype
-  visual_wasted: 0.25      # 'WASTED' or 'BUSTED' screen detected
+  visual_impact: 0.25      # High-impact damage or elimination screen detected
   transcript_hype: 0.10    # 'Vice City', 'cops', 'wasted', 'run', 'shoot', 'busted'
 
 clip:

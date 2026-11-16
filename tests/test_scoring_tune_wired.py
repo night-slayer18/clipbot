@@ -67,7 +67,7 @@ async def test_adaptive_weight_tuner_with_sqlite(test_db: aiosqlite.Connection, 
             scores_breakdown={
                 "audio_rms": 2.5 if is_approved else 0.2,
                 "chat_velocity": 3.0 if is_approved else 0.1,
-                "visual_wasted": 1.0 if is_approved else 0.0,
+                "visual_impact": 1.0 if is_approved else 0.0,
             },
             status=ClipStatus.RENDERED,
         )
