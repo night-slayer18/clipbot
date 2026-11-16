@@ -1,0 +1,29 @@
+# Cricket Profile — Wickets, towering sixes, clean bowled, clutch finishes
+name: "cricket"
+description: "Cricket viral highlights: clean bowled, monster sixes, direct hits, super overs"
+
+signal_weights:
+  audio_rms: 0.40          # Stadium crowd roar, stump-mic bat crack
+  audio_onset: 0.25        # Instant explosion of cheer on wicket / six
+  chat_velocity: 0.20      # Live chat spikes
+  transcript_hype: 0.15    # "Edged and taken!", "That is massive!", "Clean bowled!"
+
+clip:
+  pre_pad_seconds: 6       # Bowler's run-up and delivery
+  post_pad_seconds: 8      # Celebration, stumps flying, slow-motion replay
+  min_duration: 20
+  max_duration: 50
+
+chat_emotes:
+  high: ["SIX", "WICKET", "BOWLED", "GONE", "KING", "BOOM", "INDIA", "CATCH"]
+  medium: ["FOUR", "SCREAMER", "SPEED", "WOW", "RIP"]
+  low: ["OUT", "RUN", "W"]
+
+transcript_keywords:
+  high: ["clean bowled", "edged and taken", "that is huge", "out of the park", "what a catch", "hat trick", "century", "stumps broken"]
+  medium: ["gone", "maximum", "into the crowd", "appeal", "super over", "boundary"]
+
+render:
+  layout: "blur_canvas"
+  caption_style: "karaoke"
+  caption_color: "#00E5FF" # Electric cyan

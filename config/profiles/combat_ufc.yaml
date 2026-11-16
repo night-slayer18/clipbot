@@ -1,0 +1,29 @@
+# Combat Sports / UFC Profile — Knockouts, submissions, wild exchanges
+name: "combat_ufc"
+description: "UFC / Boxing moments: one-punch knockouts, submissions, head kicks, dramatic comebacks"
+
+signal_weights:
+  audio_rms: 0.40          # Arena explosion, punch impact, commentator roar
+  audio_onset: 0.30        # Immediate volume spike on clean KO contact
+  chat_velocity: 0.20      # KO chat spam
+  transcript_hype: 0.10    # "He's hurt!", "It is all over!", "Goodnight!"
+
+clip:
+  pre_pad_seconds: 5       # Striking combination or takedown attempt
+  post_pad_seconds: 8      # Fall to the canvas, referee wave-off, victory climb
+  min_duration: 15
+  max_duration: 45
+
+chat_emotes:
+  high: ["KO", "SLEPT", "GOODNIGHT", "💀", "WHAT", "HOLY", "SHEESH"]
+  medium: ["HURT", "BLOOD", "SUBMISSION", "TAP", "CHAMP"]
+  low: ["L", "W", "ROBBERY"]
+
+transcript_keywords:
+  high: ["it is all over", "he's hurt", "knockout", "down goes", "out cold", "clean head kick"]
+  medium: ["submission", "tap", "unbelievable", "championship", "referee steps in"]
+
+render:
+  layout: "blur_canvas"
+  caption_style: "karaoke"
+  caption_color: "#EF4444" # Combat red

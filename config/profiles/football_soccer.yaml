@@ -1,0 +1,29 @@
+# Football / Soccer Profile — Goals, screamers, skill moves, red cards, VAR drama
+name: "football_soccer"
+description: "World football moments: screamers, overhead kicks, solo runs, last-minute winners"
+
+signal_weights:
+  audio_rms: 0.40          # Stadium roar on goal
+  audio_onset: 0.25        # Sudden eruption, referee whistle
+  chat_velocity: 0.20      # Goal reactions
+  transcript_hype: 0.15    # "Gooooal!", "Unbelievable strike!", "What a save!"
+
+clip:
+  pre_pad_seconds: 7       # Build-up pass & attacking run
+  post_pad_seconds: 10     # Goal celebration, knee slide, player huddle, replay
+  min_duration: 25
+  max_duration: 60
+
+chat_emotes:
+  high: ["GOAL", "SIUUU", "ANKARA", "GOAT", "WHAT A GOAL", "MAGIC", "OH MY"]
+  medium: ["PENALTY", "RED CARD", "SAVE", "VAR", "DISASTER"]
+  low: ["MISS", "OFFSIDE", "L"]
+
+transcript_keywords:
+  high: ["what a goal", "screamer", "unbelievable strike", "top corner", "in the dying seconds", "what a save", "red card", "hat trick"]
+  medium: ["goal", "penalty", "free kick", "counter attack", "champions league"]
+
+render:
+  layout: "blur_canvas"
+  caption_style: "karaoke"
+  caption_color: "#10B981" # Pitch green

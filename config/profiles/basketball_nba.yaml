@@ -1,0 +1,29 @@
+# Basketball / NBA Profile — Dunks, blocks, ankle-breakers, buzzer beaters
+name: "basketball_nba"
+description: "High-octane NBA highlights: fastbreaks, poster dunks, crossovers, clutch threes"
+
+signal_weights:
+  audio_rms: 0.40          # Rim rattling, sneaker squeaks, whistle, commentator yell
+  audio_onset: 0.25        # Sharp sudden burst on dunk or shot
+  chat_velocity: 0.20      # Twitch/stream chat reaction
+  transcript_hype: 0.15    # "Bang!", "What a dunk!", "Blocked by James!", "Buzzer beater!"
+
+clip:
+  pre_pad_seconds: 5       # Catch possession start & drive to the basket
+  post_pad_seconds: 7      # Keep the celebration, bench reaction & replay
+  min_duration: 15
+  max_duration: 40
+
+chat_emotes:
+  high: ["POSTER", "SHEESH", "BANG", "W", "OMG", "💀", "HOLY", "DUNK"]
+  medium: ["ANKLES", "COOKED", "HEATER", "NO WAY", "CLIP"]
+  low: ["Pog", "L", "BRICK"]
+
+transcript_keywords:
+  high: ["what a slam", "bang", "poster", "he's heating up", "for the win", "blocked", "ankle breaker", "buzzer beater"]
+  medium: ["three pointer", "steal", "fastbreak", "take a look", "unbelievable"]
+
+render:
+  layout: "blur_canvas"    # Crisp 16:9 court action centered with blurred vertical background
+  caption_style: "karaoke"
+  caption_color: "#FF6600" # Basketball vibrant orange
