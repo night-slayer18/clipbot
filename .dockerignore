@@ -1,0 +1,36 @@
+# Git and CI
+.git/
+.github/
+
+# Python virtual environment & caches
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+
+# Testing and coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local media storage and databases
+data/
+*.db
+*.db-wal
+*.db-shm
+*.mp4
+*.wav
+*.part
+*.ytdl
+
+# IDE and OS
+.DS_Store
+.vscode/
+.idea/
+*.log
