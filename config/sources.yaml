@@ -1,0 +1,66 @@
+# ClipBot Multi-Niche & Multi-Language Sources Configuration
+
+twitch:
+  enabled: true
+  game_ids:
+    - "32982"   # Grand Theft Auto V
+  top_clips:
+    enabled: true
+    period: "day"          # 'day', 'week', 'month'
+    limit: 50
+    min_view_count: 250
+  channels: []
+
+kick:
+  enabled: true
+  categories:
+    - "grand-theft-auto-v"
+    - "just-chatting"
+  top_clips:
+    enabled: true
+    limit: 30
+    min_view_count: 100
+
+youtube:
+  enabled: true
+  # Topic query banks for auto-discovery across languages & niches
+  search_queries:
+    gta:
+      - "GTA RP funny moments"
+      - "GTA 5 fails compilation"
+      - "GTA RP best moments"
+    basketball:
+      - "NBA insane highlights"
+      - "NBA best dunks"
+      - "NBA ankle breakers"
+      - "NBA buzzer beaters"
+    cricket:
+      - "Cricket best wickets"
+      - "Cricket monster sixes"
+      - "IPL insane moments"
+      - "Cricket clean bowled"
+    football:
+      - "Football insane goals"
+      - "Soccer screamers"
+      - "Champions League best skills"
+    combat:
+      - "UFC brutal knockouts"
+      - "Boxing best KOs"
+    cartoons:
+      - "Tom and Jerry funny cartoon moments"
+      - "Classic cartoon funny chase scenes"
+    indian_languages:
+      - "Hindi funny gaming moments"
+      - "Malayalam gaming troll clips"
+      - "Malayalam funny movie scenes"
+      - "Hindi comedy movie clips"
+    movies_free:
+      - "Full movie in English public domain"
+      - "Cult cinema classics full movie"
+  channels: []
+
+# Global filters: open to all languages
+filters:
+  languages: ["en", "hi", "ml", "es", "*"]
+  min_duration_seconds: 15
+  max_duration_seconds: 120
