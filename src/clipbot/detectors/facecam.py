@@ -36,8 +36,13 @@ class FacecamDetector:
     """Detects streamer facecam regions in 16:9 gameplay streams."""
 
     def __init__(self) -> None:
-        cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        self.cascade = cv2.CascadeClassifier(cascade_path)
+        self.cascade = None
+        try:
+            if hasattr(cv2, "CascadeClassifier") and hasattr(cv2, "data") and hasattr(cv2.data, "haarcascades"):
+                cascade_path = cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+                self.cascade = cv2.CascadeClassifier(cascade_path)
+        except Exception as exc:
+            logger.warning(f"[Facecam] Could not load face cascade classifier: {exc}")
 
     async def detect(self, video_path: Path, sample_count: int = 10) -> Optional[FacecamBox]:
         """Async wrapper to detect facecam box across sampled frames."""
@@ -46,6 +51,8 @@ class FacecamDetector:
         )
 
     def _detect_sync(self, video_path: Path, sample_count: int = 10) -> Optional[FacecamBox]:
+        if self.cascade is None or getattr(self.cascade, "empty", lambda: True)():
+            return None
         cap = cv2.VideoCapture(str(video_path))
         if not cap.isOpened():
             logger.warning(f"[Facecam] Cannot open video: {video_path}")
