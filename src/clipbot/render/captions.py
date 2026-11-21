@@ -114,8 +114,8 @@ def sanitize_and_chunk_words(
     return chunks
 
 
-# Multilingual ASS header with universal unicode font fallback and mobile safe-zone positioning
-# MarginV: 700 with Alignment: 2 anchors the text baseline at Y = 1920 - 700 = 1220 (Universal Safe Band)
+# Multilingual ASS header with universal font styling and mobile safe-zone positioning.
+# MarginV: 700 with Alignment: 2 anchors text baseline at Y = 1920 - 700 = 1220 (Universal Mobile Safe Band).
 ASS_HEADER = """[Script Info]
 ScriptType: v4.00+
 PlayResX: 1080
@@ -125,7 +125,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Default,DejaVu Sans,Impact,Noto Sans,Arial,74,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,6,3,2,60,60,700,1
+Style: Default,DejaVu Sans,74,&H00FFFFFF,&H0000FFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,6,3,2,60,60,700,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text

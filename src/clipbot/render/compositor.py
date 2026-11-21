@@ -56,8 +56,8 @@ class VideoCompositor:
             if layout == "split_stack":
                 facecam = await self.facecam_detector.detect(raw_trimmed)
 
-            # Gate Split-Stack by confidence (minimum 0.60) to prevent false-positives
-            if layout == "split_stack" and facecam is not None and facecam.confidence >= 0.60:
+            # Gate Split-Stack by confidence (minimum 0.70) to prevent false-positives
+            if layout == "split_stack" and facecam is not None and facecam.confidence >= 0.70:
                 src_w, src_h = probe_media_resolution(raw_trimmed)
                 logger.info(
                     f"[Compositor] Using Split-Stack layout with facecam ({facecam.to_ffmpeg_crop(src_w, src_h)}) "
@@ -82,7 +82,7 @@ class VideoCompositor:
                 if layout == "split_stack":
                     conf_val = getattr(facecam, "confidence", 0.0)
                     logger.info(
-                        f"[Compositor] Corner facecam not locked (confidence={conf_val:.2f} < 0.60). "
+                        f"[Compositor] Corner facecam not locked (confidence={conf_val:.2f} < 0.70). "
                         "Falling back to Blur-Canvas layout (Safe Layout)."
                     )
                 else:
