@@ -5,7 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 import pytest
 
-from clipbot.render.captions import CaptionGenerator, SpokenWord, _format_ass_time
+from clipbot.render.captions import (
+    CaptionGenerator,
+    SpokenWord,
+    _format_ass_time,
+    sanitize_and_chunk_words,
+    ASS_HEADER,
+)
 from clipbot.render.movie_splitter import MovieSplitter
 
 
@@ -13,21 +19,49 @@ def test_ass_time_formatting():
     assert _format_ass_time(0.0) == "0:00:00.00"
     assert _format_ass_time(65.42) == "0:01:05.42"
     assert _format_ass_time(3661.05) == "1:01:01.05"
+    # Test centisecond overflow carry-over
+    assert _format_ass_time(59.999) == "0:01:00.00"
 
 
-def test_caption_ass_events_and_styling(tmp_path: Path):
-    ass_file = tmp_path / "test_subs.ass"
-    words = [
-        SpokenWord(word="HELLO", start=1.0, end=1.5),
-        SpokenWord(word="WORLD", start=1.6, end=2.0),
-        SpokenWord(word="INSANE", start=2.2, end=2.8),
-    ]
-
-    # Test ASS header and dialogue event structure
-    from clipbot.render.captions import ASS_HEADER
+def test_caption_ass_header_and_safe_zone():
     assert "PlayResX: 1080" in ASS_HEADER
     assert "PlayResY: 1920" in ASS_HEADER
-    assert "Noto Sans" in ASS_HEADER
+    assert "WrapStyle: 2" in ASS_HEADER
+    assert "MarginV, Encoding\nStyle: Default," in ASS_HEADER
+    # MarginV must be 700 to sit at Y = 1220 (Universal Mobile Safe Zone)
+    assert ",60,60,700,1" in ASS_HEADER
+    # Primary white, Secondary yellow
+    assert "&H00FFFFFF" in ASS_HEADER
+    assert "&H0000FFFF" in ASS_HEADER
+
+
+def test_sanitize_and_chunk_words():
+    raw_words = [
+        SpokenWord(word="Hello", start=1.0, end=1.2),
+        SpokenWord(word="world", start=1.25, end=1.5),
+        SpokenWord(word="!", start=1.5, end=1.55),           # Pure punctuation, must merge
+        SpokenWord(word="This", start=1.6, end=1.62),         # < 0.12 duration, must floor
+        SpokenWord(word="is", start=1.65, end=1.75),
+        SpokenWord(word="insane", start=2.5, end=2.9),        # Gap > 0.45s, must split
+    ]
+
+    chunks = sanitize_and_chunk_words(raw_words, max_words_per_line=4, max_chars_per_line=24)
+
+    # First chunk: "HELLO", "WORLD!", "THIS", "IS" (max 4 words or split on pause)
+    # The pause between 'is' (1.75s or floored) and 'insane' (2.5s) is > 0.45s, so 'insane' is in chunk 2
+    assert len(chunks) == 2
+    chunk1 = chunks[0]
+    assert len(chunk1) == 4
+    assert chunk1[0].word == "HELLO"
+    assert chunk1[1].word == "WORLD!"  # Punctuation merged
+    assert chunk1[2].word == "THIS"
+    assert chunk1[2].end - chunk1[2].start >= 0.12  # Floored
+    assert chunk1[3].word == "IS"
+
+    chunk2 = chunks[1]
+    assert len(chunk2) == 1
+    assert chunk2[0].word == "INSANE"
+    assert chunk2[0].start >= chunk1[-1].end  # Monotonicity
 
 
 def test_movie_splitter_smart_cut_points():

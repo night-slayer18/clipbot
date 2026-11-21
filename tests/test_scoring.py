@@ -5,7 +5,13 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from clipbot.scoring.combine import score_and_window, _zscore, _non_max_suppression, ClipCandidate
+from clipbot.scoring.combine import (
+    score_and_window,
+    _zscore,
+    _non_max_suppression,
+    _snap_to_vad_pause,
+    ClipCandidate,
+)
 
 
 def test_zscore_flat():
@@ -38,3 +44,20 @@ def test_non_max_suppression_overlap():
     result = _non_max_suppression(cands, min_gap=0)
     assert len(result) == 1
     assert result[0].score == 0.9
+
+
+def test_snap_to_vad_pause():
+    # VAD array: 1 = speech, 0 = silence pause
+    # 0: speech, 1: speech, 2: pause, 3: speech, 4: speech, 5: pause
+    vad = np.array([1.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0, 1.0], dtype=np.float32)
+
+    # Start boundary falls at t=1.0 (mid-speech). Nearest pause is at t=2.0
+    snapped_start = _snap_to_vad_pause(1.0, vad, search_window=2.0, is_end=False)
+    assert snapped_start == 2.0
+
+    # End boundary falls at t=4.0 (mid-speech). Nearest pause is at t=5.0
+    snapped_end = _snap_to_vad_pause(4.0, vad, search_window=2.0, is_end=True)
+    assert snapped_end == 5.0
+
+    # When already in a pause at t=2.0, stays at 2.0
+    assert _snap_to_vad_pause(2.0, vad, search_window=2.0, is_end=False) == 2.0

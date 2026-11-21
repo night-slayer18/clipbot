@@ -61,7 +61,7 @@ def generate_real_mp4(
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     out = cv2.VideoWriter(str(dest_path), fourcc, fps, (width, height))
     
-    total_frames = duration_sec * fps
+    total_frames = int(duration_sec * fps)
     for i in range(total_frames):
         # Create solid color frame with a moving rectangle to simulate motion
         frame = np.full((height, width, 3), color, dtype=np.uint8)
