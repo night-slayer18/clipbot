@@ -6,7 +6,7 @@ services:
     container_name: clipbot-pipeline
     restart: unless-stopped
     command: ["clipbot", "daemon", "--profile", "${CLIPBOT_PROFILE:-gta6_chaos}"]
-    mem_limit: 12g
+    mem_limit: 10g
     mem_reservation: 4g
     volumes:
       - ../data:/app/data
@@ -23,10 +23,10 @@ services:
     container_name: clipbot-review
     restart: unless-stopped
     command: ["clipbot", "review", "--host", "0.0.0.0", "--port", "8000"]
-    mem_limit: 2g
+    mem_limit: 1.5g
     mem_reservation: 512m
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"
     volumes:
       - ../data:/app/data
       - ../config:/app/config
@@ -35,4 +35,4 @@ services:
     environment:
       - CLIPBOT_DB_PATH=data/state.db
       - CLIPBOT_REVIEW_USER=${CLIPBOT_REVIEW_USER:-admin}
-      - CLIPBOT_REVIEW_PASSWORD=${CLIPBOT_REVIEW_PASSWORD:-}
+      - CLIPBOT_REVIEW_PASSWORD=${CLIPBOT_REVIEW_PASSWORD}

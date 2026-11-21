@@ -149,13 +149,12 @@ async def run_cycle(profile_name: str = "gta6_chaos", auto_render: bool = True) 
 
                 candidate_windows = None
                 if asset.duration and asset.duration > 300 and "audio_rms" in signals:
+                    from clipbot.scoring.combine import _find_local_peaks, _zscore
                     coarse_len = min(len(signals["audio_rms"]), len(signals.get("visual_impact", signals["audio_rms"])))
-                    combined_coarse = (
-                        signals["audio_rms"][:coarse_len]
-                        + signals.get("visual_impact", np.zeros(coarse_len, dtype=np.float32))[:coarse_len]
-                        + signals.get("visual_motion", np.zeros(coarse_len, dtype=np.float32))[:coarse_len]
-                    )
-                    from clipbot.scoring.combine import _find_local_peaks
+                    rms_c = _zscore(signals["audio_rms"][:coarse_len])
+                    impact_c = _zscore(signals.get("visual_impact", np.zeros(coarse_len, dtype=np.float32))[:coarse_len])
+                    motion_c = _zscore(signals.get("visual_motion", np.zeros(coarse_len, dtype=np.float32))[:coarse_len])
+                    combined_coarse = rms_c + impact_c + motion_c
                     coarse_peaks = _find_local_peaks(combined_coarse, min_distance=max(20, int(config.pipeline.min_gap_seconds * 0.5)), min_score=0.3)
                     candidate_windows = [
                         (max(0.0, float(p - 15)), min(float(asset.duration), float(p + 35)))
@@ -174,8 +173,7 @@ async def run_cycle(profile_name: str = "gta6_chaos", auto_render: bool = True) 
                 for name, arr in signals.items():
                     await upsert_signal(db, asset.id, name, arr)
 
-            # 3. Score & Window candidate highlights
-            # Fix Flaw 1 & 2: Read scoring.top_n from active profile, dynamic envelope, peak-picking
+            # Score & window candidate highlights
             scoring_top_n = profile.get("scoring", {}).get("top_n", 3)
             candidates = score_and_window(
                 signals=signals,
@@ -184,6 +182,7 @@ async def run_cycle(profile_name: str = "gta6_chaos", auto_render: bool = True) 
                 max_duration=config.pipeline.max_clip_duration,
                 min_gap=float(config.pipeline.min_gap_seconds),
                 top_n=scoring_top_n,
+                media_duration=asset.duration,
             )
 
             # If asset is already a short clip (<60s) and no window found, treat full asset as candidate
@@ -313,13 +312,12 @@ async def process_url_pipeline(
 
     candidate_windows = None
     if media_dur and media_dur > 300 and "audio_rms" in signals:
+        from clipbot.scoring.combine import _find_local_peaks, _zscore
         coarse_len = min(len(signals["audio_rms"]), len(signals.get("visual_impact", signals["audio_rms"])))
-        combined_coarse = (
-            signals["audio_rms"][:coarse_len]
-            + signals.get("visual_impact", np.zeros(coarse_len, dtype=np.float32))[:coarse_len]
-            + signals.get("visual_motion", np.zeros(coarse_len, dtype=np.float32))[:coarse_len]
-        )
-        from clipbot.scoring.combine import _find_local_peaks
+        rms_c = _zscore(signals["audio_rms"][:coarse_len])
+        impact_c = _zscore(signals.get("visual_impact", np.zeros(coarse_len, dtype=np.float32))[:coarse_len])
+        motion_c = _zscore(signals.get("visual_motion", np.zeros(coarse_len, dtype=np.float32))[:coarse_len])
+        combined_coarse = rms_c + impact_c + motion_c
         coarse_peaks = _find_local_peaks(combined_coarse, min_distance=max(20, int(config.pipeline.min_gap_seconds * 0.5)), min_score=0.3)
         candidate_windows = [
             (max(0.0, float(p - 15)), min(float(media_dur), float(p + 35)))
@@ -343,6 +341,7 @@ async def process_url_pipeline(
         max_duration=config.pipeline.max_clip_duration,
         min_gap=float(config.pipeline.min_gap_seconds),
         top_n=max_clips,
+        media_duration=media_dur,
     )
     if not candidates:
         logger.warning("[ClipPipeline] No peaks found; using opening segment")

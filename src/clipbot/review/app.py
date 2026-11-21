@@ -56,6 +56,16 @@ def create_app() -> FastAPI:
     auth_password = os.environ.get("CLIPBOT_REVIEW_PASSWORD") or getattr(settings, "review_password", "")
     auth_enabled = bool(auth_password)
 
+    # Require password if exposed externally (bypass with CLIPBOT_REVIEW_ALLOW_OPEN=1 for local tunnel)
+    allow_open = os.environ.get("CLIPBOT_REVIEW_ALLOW_OPEN", "").strip().lower() in ("1", "true", "yes")
+    if not auth_enabled and not allow_open:
+        raise RuntimeError(
+            "CLIPBOT_REVIEW_PASSWORD is not set and CLIPBOT_REVIEW_ALLOW_OPEN is not '1'. "
+            "The review dashboard is exposed on 0.0.0.0:8000 and must be password-protected. "
+            "Set CLIPBOT_REVIEW_PASSWORD=<strong-password> in your .env file, or use an SSH tunnel "
+            "and set CLIPBOT_REVIEW_ALLOW_OPEN=1 to bypass (localhost only)."
+        )
+
     def verify_auth(credentials: Optional[HTTPBasicCredentials] = Depends(security)):
         if not auth_enabled:
             return True

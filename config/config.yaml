@@ -16,7 +16,7 @@ pipeline:
   min_gap_seconds: 60          # Minimum gap between two clips from the same source
 
 scoring:
-  profile: "gta_chaos"         # Default scoring profile
+  profile: "gta6_chaos"        # Default scoring profile
   top_n: 20                    # Candidates to score per asset
 
 review:
