@@ -6,12 +6,14 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=/opt/clipbot
-ExecStart=/opt/clipbot/.venv/bin/clipbot daemon --profile general_viral
+ExecStart=/opt/clipbot/.venv/bin/clipbot daemon --profile gta6_chaos
 Restart=on-failure
 RestartSec=300
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=clipbot
+MemoryHigh=10G
+MemoryMax=12G
 
 [Install]
 WantedBy=multi-user.target

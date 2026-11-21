@@ -4,18 +4,20 @@ from __future__ import annotations
 
 import json
 import os
+import secrets
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
 import aiosqlite
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
-from clipbot.core.config import get_config
+from clipbot.core.config import get_config, get_settings
 from clipbot.core.db import init_db
 from clipbot.core.repository import get_clips_for_review, set_clip_decision
 from clipbot.render.compositor import VideoCompositor
@@ -23,6 +25,7 @@ from clipbot.render.compositor import VideoCompositor
 
 TEMPLATES_DIR = Path(__file__).parent / "templates"
 STATIC_DIR = Path(__file__).parent / "static"
+security = HTTPBasic(auto_error=False)
 
 
 class ApproveRequest(BaseModel):
@@ -45,14 +48,44 @@ class ReRenderRequest(BaseModel):
 
 def create_app() -> FastAPI:
     config = get_config()
+    settings = get_settings()
     db_path = config.database.path
+
+    # Security: HTTP Basic Auth gate when review password is configured
+    auth_user = os.environ.get("CLIPBOT_REVIEW_USER") or getattr(settings, "review_user", "admin")
+    auth_password = os.environ.get("CLIPBOT_REVIEW_PASSWORD") or getattr(settings, "review_password", "")
+    auth_enabled = bool(auth_password)
+
+    def verify_auth(credentials: Optional[HTTPBasicCredentials] = Depends(security)):
+        if not auth_enabled:
+            return True
+        if not credentials:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication required",
+                headers={"WWW-Authenticate": "Basic"},
+            )
+        correct_username = secrets.compare_digest(credentials.username, auth_user)
+        correct_password = secrets.compare_digest(credentials.password, auth_password)
+        if not (correct_username and correct_password):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid credentials",
+                headers={"WWW-Authenticate": "Basic"},
+            )
+        return True
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         await init_db(db_path)
         yield
 
-    app = FastAPI(title="ClipBot Review Dashboard", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(
+        title="ClipBot Review Dashboard",
+        version="1.0.0",
+        lifespan=lifespan,
+        dependencies=[Depends(verify_auth)],
+    )
 
     if STATIC_DIR.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
