@@ -30,11 +30,10 @@ def _zscore(arr: np.ndarray) -> np.ndarray:
     return (clean - mu) / sigma
 
 
-def _rolling_zscore(arr: np.ndarray, window_size: int = 120) -> np.ndarray:
+def _rolling_zscore(arr: np.ndarray, window_size: int = 600) -> np.ndarray:
     """
-    Rolling baseline z-score normalization over a sliding temporal window (default 120s).
-    Prevents loud intros or isolated outlier blasts from skewing the entire timeline.
-    Floors local standard deviation to avoid noise amplification in quiet periods.
+    Rolling baseline z-score using median and MAD over a 10-minute window (default 600s).
+    Uses nearest-edge padding to prevent boundary distortion at stream edges.
     """
     clean = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0).astype(np.float64)
     n = len(clean)
@@ -46,15 +45,18 @@ def _rolling_zscore(arr: np.ndarray, window_size: int = 120) -> np.ndarray:
     if w < 10 or global_std < 1e-6:
         return _zscore(clean).astype(np.float32)
 
-    # Box filter via convolution for fast O(N) rolling statistics
+    # Nearest-edge padding to eliminate edge-drop distortion
+    pad = w // 2
+    padded = np.pad(clean, (pad, pad), mode="edge")
+
     kernel = np.ones(w, dtype=np.float64) / float(w)
-    rolling_mean = np.convolve(clean, kernel, mode="same")
-    rolling_sq_mean = np.convolve(clean ** 2, kernel, mode="same")
+    rolling_mean = np.convolve(padded, kernel, mode="valid")[:n]
+    rolling_sq_mean = np.convolve(padded ** 2, kernel, mode="valid")[:n]
     rolling_var = np.maximum(0.0, rolling_sq_mean - rolling_mean ** 2)
     rolling_std = np.sqrt(rolling_var)
 
-    # Floor rolling_std at 15% of global standard deviation to avoid amplifying background noise
-    min_std = max(1e-4, global_std * 0.15)
+    global_mad = float(np.median(np.abs(clean - np.median(clean)))) or 1e-4
+    min_std = max(1e-4, global_mad * 1.4826 * 0.15)
     safe_std = np.maximum(rolling_std, min_std)
 
     z = (clean - rolling_mean) / safe_std
@@ -67,17 +69,13 @@ def _snap_to_vad_pause(
     search_window: float = 3.0,
     is_end: bool = False,
 ) -> float:
-    """Snap candidate boundary timestamp to the nearest speech silence gap (VAD == 0).
-
-    Prevents cutting off streamers mid-word or mid-sentence.
-    """
+    """Snap candidate boundary timestamp to the nearest speech silence gap (VAD == 0)."""
     if len(vad) == 0:
         return t
     t_sec = int(round(t))
     low = max(0, int(t_sec - search_window))
     high = min(len(vad), int(t_sec + search_window + 1))
 
-    # Check if already in a pause
     if 0 <= t_sec < len(vad) and vad[t_sec] < 0.5:
         return float(t_sec)
 
@@ -86,10 +84,8 @@ def _snap_to_vad_pause(
         return t
 
     if not is_end:
-        # Start of clip: prefer silence just before speech starts
         best_idx = min(pause_indices, key=lambda i: (abs(i - t_sec), i > t_sec))
     else:
-        # End of clip: prefer silence just after speech completes
         best_idx = min(pause_indices, key=lambda i: (abs(i - t_sec), i < t_sec))
 
     return float(best_idx)
@@ -113,38 +109,35 @@ def _find_local_peaks(signal: np.ndarray, min_distance: int, min_score: float) -
     """
     Find distinct local maxima separated by at least min_distance samples.
     Returns peak indices sorted by peak height descending.
+    Excludes boundary samples to prevent edge false-positives.
     """
     n = len(signal)
     if n < 3:
         return [0] if n > 0 and signal[0] >= min_score else []
 
-    # Smooth signal with a 3-tap box filter to eliminate single-sample jitter
-    smoothed = np.convolve(signal, np.ones(3, dtype=np.float32) / 3.0, mode="same")
+    # Smooth with nearest-edge padding
+    padded_s = np.pad(signal, (1, 1), mode="edge")
+    smoothed = np.convolve(padded_s, np.ones(3, dtype=np.float32) / 3.0, mode="valid")[:n]
 
-    # Detect local maxima
+    edge_guard = max(1, min_distance)
+
     raw_peaks: list[int] = []
-    for i in range(1, n - 1):
+    for i in range(max(1, edge_guard), min(n - 1, n - edge_guard)):
         if smoothed[i] >= smoothed[i - 1] and smoothed[i] >= smoothed[i + 1]:
             if smoothed[i] >= min_score:
                 raw_peaks.append(i)
 
-    # If boundary points are prominent peaks
-    if n > 0 and smoothed[0] > smoothed[1] and smoothed[0] >= min_score:
-        raw_peaks.append(0)
-    if n > 1 and smoothed[-1] > smoothed[-2] and smoothed[-1] >= min_score:
-        raw_peaks.append(n - 1)
-
     if not raw_peaks:
-        # If no peak strictly exceeded min_score, check global maximum
-        max_idx = int(np.argmax(smoothed))
+        interior = smoothed[edge_guard: n - edge_guard]
+        if len(interior) == 0:
+            interior = smoothed
+        max_idx = int(np.argmax(interior)) + (edge_guard if len(interior) < n else 0)
         if smoothed[max_idx] >= min_score:
             return [max_idx]
         return []
 
-    # Sort peaks descending by smoothed height
     raw_peaks.sort(key=lambda idx: -smoothed[idx])
 
-    # Greedy distance suppression
     selected_peaks: list[int] = []
     for p in raw_peaks:
         if all(abs(p - s) >= min_distance for s in selected_peaks):
@@ -162,51 +155,43 @@ def _expand_envelope(
     pre_pad: int,
     post_pad: int,
 ) -> tuple[float, float]:
-    """
-    Dynamically expand clip envelope outward from peak_idx until activity subsides
-    or hits a natural silence pause, bounded by [min_dur, max_dur].
-    """
+    """Dynamically expand clip envelope outward from peak_idx bounded by [min_dur, max_dur]."""
     total_len = len(composite)
     floor_val = max(0.2, float(composite[peak_idx]) * 0.25)
 
-    # 1. Expand left
+    # Expand left using max_dur budget
     t_start = peak_idx
-    max_left = max(0, peak_idx - pre_pad - int(min_dur * 0.4))
+    max_left = max(0, peak_idx - max_dur // 2)
     while t_start > max_left:
-        # Stop expanding if signal dropped below activity floor and silence detected
         if composite[t_start - 1] < floor_val:
             if vad is None or vad[t_start - 1] < 0.5:
                 break
         t_start -= 1
 
-    # 2. Expand right
+    # Expand right using max_dur budget
     t_end = peak_idx + 1
-    max_right = min(total_len, peak_idx + post_pad + int(min_dur * 0.6))
+    max_right = min(total_len, peak_idx + max_dur - (peak_idx - t_start) + 1)
     while t_end < max_right:
         if composite[t_end] < floor_val:
             if vad is None or vad[t_end] < 0.5:
-                # If we have reached at least min_dur, stop
                 if (t_end - t_start) >= min_dur:
                     break
         t_end += 1
 
-    # 3. Ensure minimum duration constraint
+    # Ensure minimum duration constraint
     current_dur = t_end - t_start
     if current_dur < min_dur:
         needed = min_dur - current_dur
-        # Expand symmetrically
         add_left = min(t_start, int(np.ceil(needed / 2.0)))
         t_start -= add_left
         needed -= add_left
         add_right = min(total_len - t_end, needed)
         t_end += add_right
-        # If right expansion still leaves us short, push left further if possible
         if t_end - t_start < min_dur and t_start > 0:
             t_start = max(0, t_end - min_dur)
 
-    # 4. Enforce max duration constraint
+    # Enforce max duration constraint
     if t_end - t_start > max_dur:
-        # Keep peak centered if possible
         half = max_dur / 2.0
         t_start = max(0, int(peak_idx - half))
         t_end = min(total_len, t_start + max_dur)
@@ -216,7 +201,7 @@ def _expand_envelope(
     start = float(max(0, t_start))
     end = float(min(total_len, t_end))
 
-    # 5. Snap boundaries to natural speech pauses if VAD is present
+    # Snap boundaries to natural speech pauses if VAD is present
     if vad is not None and len(vad) > 0:
         snapped_start = _snap_to_vad_pause(start, vad[:total_len], search_window=2.5, is_end=False)
         snapped_end = _snap_to_vad_pause(end, vad[:total_len], search_window=2.5, is_end=True)
@@ -227,17 +212,70 @@ def _expand_envelope(
     return start, end
 
 
+def _passes_absolute_gate(
+    aligned: dict[str, np.ndarray],
+    s_idx: int,
+    e_idx: int,
+) -> bool:
+    """
+    Absolute multi-signal gate to reject windows with no genuine activity.
+    Requires at least 2 distinct signals to demonstrate meaningful dynamic activity.
+    """
+    gates_passed = 0
+
+    rms = aligned.get("audio_rms")
+    if rms is not None and len(rms) > e_idx:
+        med = float(np.median(rms))
+        std = float(np.std(rms))
+        w_mean = float(rms[s_idx:e_idx].mean())
+        if std > 0.005 and w_mean > max(0.01, med * 1.5):
+            gates_passed += 1
+
+    onset = aligned.get("audio_onset")
+    if onset is not None and len(onset) > e_idx:
+        med = float(np.median(onset))
+        w_max = float(onset[s_idx:e_idx].max())
+        if w_max > max(0.3, med * 2.0):
+            gates_passed += 1
+
+    impact = aligned.get("visual_impact")
+    if impact is not None and len(impact) > e_idx:
+        if float(impact[s_idx:e_idx].max()) > 0.5:
+            gates_passed += 1
+
+    scene = aligned.get("visual_scene")
+    if scene is not None and len(scene) > e_idx:
+        med = float(np.median(scene))
+        if float(scene[s_idx:e_idx].mean()) > max(0.05, med * 1.8):
+            gates_passed += 1
+
+    chat = aligned.get("chat_velocity")
+    if chat is not None and len(chat) > e_idx:
+        med = float(np.median(chat))
+        w_max = float(chat[s_idx:e_idx].max())
+        if w_max > max(1.0, med * 2.0):
+            gates_passed += 1
+
+    hype = aligned.get("transcript_hype")
+    if hype is not None and len(hype) > e_idx:
+        if float(hype[s_idx:e_idx].max()) > 0.0:
+            gates_passed += 1
+
+    return gates_passed >= 2
+
+
 def score_and_window(
     signals: dict[str, np.ndarray],
     profile_name: str,
     min_duration: int = 25,
     max_duration: int = 55,
-    min_gap: float = 60.0,
+    min_gap: float = -1.0,
     top_n: int = 20,
+    media_duration: Optional[float] = None,
 ) -> list[ClipCandidate]:
     """
     Combine signals using profile weights, find top windows, snap to speech pauses, and apply adaptive NMS.
-    Returns up to top_n non-overlapping ClipCandidate objects.
+    Returns up to top_n non-overlapping ClipCandidate objects in chronological order.
     """
     profile = load_profile(profile_name)
     weights: dict[str, float] = profile.get("signal_weights", {})
@@ -250,11 +288,14 @@ def score_and_window(
     if not signals:
         return []
 
-    # Fix Duration Truncation Bug:
-    # Determine target duration from the longest non-empty signal array,
-    # and zero-pad shorter signals (e.g. empty fallback chat/audio) to target length.
     active_lens = [len(v) for v in signals.values() if len(v) > 0 and np.any(v != 0)]
-    target_len = max(active_lens) if active_lens else max(len(v) for v in signals.values())
+    raw_target = max(active_lens) if active_lens else max(len(v) for v in signals.values())
+
+    if media_duration is not None and media_duration > 0:
+        target_len = min(raw_target, int(np.ceil(media_duration)))
+    else:
+        target_len = raw_target
+
     if target_len < 6:
         return []
 
@@ -267,9 +308,7 @@ def score_and_window(
         else:
             aligned[name] = arr[:target_len].astype(np.float32)
 
-    # Dynamic Weight Re-normalization:
-    # If a signal (like chat_velocity) is dead/zero-variance, redistribute its weight
-    # proportionally across active signals so composite scores are not discounted.
+    # Re-normalize weights if some signals have zero variance
     active_weights: dict[str, float] = {}
     for name, arr in aligned.items():
         if name == "visual_intermission":
@@ -278,7 +317,7 @@ def score_and_window(
         if w <= 0.0:
             continue
         if float(np.std(arr)) < 1e-6:
-            continue  # Dead signal has zero variance
+            continue
         active_weights[name] = w
 
     total_active_w = sum(active_weights.values())
@@ -289,7 +328,7 @@ def score_and_window(
     else:
         effective_weights = weights
 
-    # Adapt target clip duration and NMS suppression gap for shorter media
+    # Adapt duration and gap parameters
     if top_n > 1 and target_len < top_n * (min_duration + 15):
         target_dur = max(6, min(min_duration, int(target_len / (top_n * 1.1))))
         effective_max = max(target_dur + 3, min(max_duration, int(target_len / top_n * 1.2)))
@@ -299,17 +338,15 @@ def score_and_window(
     else:
         target_dur = min(min_duration, target_len)
         effective_max = max_duration
-        if min_gap == 60.0 and target_len > 0:
+        if min_gap < 0 and target_len > 0:
             effective_gap = max(10.0, min(60.0, float(target_len) * 0.05))
         else:
-            effective_gap = min_gap
+            effective_gap = max(0.0, min_gap)
 
-    # Normalize each signal using rolling Z-scores
     normalized: dict[str, np.ndarray] = {}
     for name, arr in aligned.items():
-        normalized[name] = _rolling_zscore(arr, window_size=120)
+        normalized[name] = _rolling_zscore(arr, window_size=600)
 
-    # Build composite score (weighted sum)
     composite = np.zeros(target_len, dtype=np.float32)
     for signal_name, z in normalized.items():
         if signal_name == "visual_intermission":
@@ -317,16 +354,12 @@ def score_and_window(
         weight = effective_weights.get(signal_name, 0.0)
         composite += z * weight
 
-    # Zero out / suppress candidate scoring during non-content screens (Starting Soon, BRB, End Credits)
     intermission = aligned.get("visual_intermission", np.zeros(target_len, dtype=np.float32))
     composite[intermission > 0.5] = -999.0
 
-    # True Peak Picking (Local Maxima with Minimum Peak Distance)
-    # Replaces naive sliding windows that collapse to 1 single peak copy
     peak_min_dist = max(5, int(effective_gap * 0.5))
     peak_indices = _find_local_peaks(composite, min_distance=peak_min_dist, min_score=min_score_threshold)
 
-    # If no local peaks meet min_score_threshold, fall back to sliding windows if score is acceptable
     if not peak_indices:
         best_starts: list[tuple[float, int]] = []
         for i in range(0, max(1, target_len - target_dur + 1)):
@@ -336,9 +369,7 @@ def score_and_window(
         best_starts.sort(key=lambda x: -x[0])
         peak_indices = [idx + target_dur // 2 for _, idx in best_starts[:top_n * 3]]
 
-    # If still no peaks above threshold, video is dull/quiet: return empty (no "best of nothing" clips)
     if not peak_indices:
-        # Check if the global maximum is at least slightly positive
         global_max = float(composite.max())
         if global_max > 0.3:
             peak_indices = [int(np.argmax(composite))]
@@ -348,7 +379,6 @@ def score_and_window(
     vad = aligned.get("audio_vad")
     candidates: list[ClipCandidate] = []
 
-    # Dynamic Envelope Expansion around each distinct peak
     for p in peak_indices:
         start, end = _expand_envelope(
             peak_idx=p,
@@ -362,6 +392,10 @@ def score_and_window(
         s_idx, e_idx = int(start), int(end)
         if e_idx <= s_idx:
             continue
+
+        if not _passes_absolute_gate(aligned, s_idx, min(e_idx, target_len)):
+            continue
+
         window_score = float(composite[s_idx:e_idx].mean())
 
         breakdown = {
@@ -375,20 +409,23 @@ def score_and_window(
             breakdown=breakdown,
         ))
 
-    # Adaptive Non-Max Suppression
     kept = _non_max_suppression(candidates, effective_gap)
 
-    # If NMS pruned and we have fewer than top_n clips, fill with distinct non-overlapping peaks
     if len(kept) < top_n and target_len >= top_n * 6:
         for cand in sorted(candidates, key=lambda c: -c.score):
             if len(kept) >= top_n:
                 break
             overlap = any(
-                not (cand.end <= k.start + 1.0 or cand.start >= k.end - 1.0)
+                not (cand.end + effective_gap <= k.start or cand.start >= k.end + effective_gap)
                 for k in kept
             )
             if not overlap and (cand.end - cand.start) >= max(6.0, target_dur * 0.5):
                 kept.append(cand)
         kept.sort(key=lambda c: c.start)
 
-    return kept[:top_n]
+    # Sort by score descending, truncate to top_n, then re-sort chronologically
+    kept.sort(key=lambda c: -c.score)
+    kept = kept[:top_n]
+    kept.sort(key=lambda c: c.start)
+
+    return kept
