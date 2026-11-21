@@ -35,8 +35,11 @@ def _now() -> str:
 
 # ── Asset CRUD ────────────────────────────────────────────────────────────────
 
-async def upsert_asset(db: aiosqlite.Connection, asset: Asset) -> None:
-    """Insert or update an asset row (keyed on source + external_id)."""
+async def upsert_asset(db: aiosqlite.Connection, asset: Asset) -> str:
+    """Insert or update an asset row (keyed on source + external_id).
+
+    Ensures asset.id is synchronized with the canonical database primary key.
+    """
     await db.execute(
         """
         INSERT INTO assets
@@ -61,7 +64,15 @@ async def upsert_asset(db: aiosqlite.Connection, asset: Asset) -> None:
             _now(),
         ),
     )
+    async with db.execute(
+        "SELECT id FROM assets WHERE source=? AND external_id=?",
+        (asset.source.value, asset.external_id),
+    ) as cur:
+        row = await cur.fetchone()
+        if row:
+            asset.id = row[0]
     await db.commit()
+    return asset.id
 
 
 async def get_asset_by_external(
