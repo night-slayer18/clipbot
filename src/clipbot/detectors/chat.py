@@ -8,6 +8,7 @@ from pathlib import Path
 import numpy as np
 from loguru import logger
 
+from clipbot.core.media import probe_media_duration
 from clipbot.core.models import Asset
 
 # GTA-specific emote weight map
@@ -31,26 +32,53 @@ class ChatDetector:
     name = "chat"
 
     async def signals(self, asset: Asset, media_path: Path) -> dict[str, np.ndarray]:
+        probed_dur = probe_media_duration(media_path) if media_path and media_path.exists() else 0.0
+        duration = int(max(probed_dur or 0, asset.duration or 0, 10))
+
         if asset.chat_path is None or not asset.chat_path.exists():
             logger.debug(f"[Chat] No chat log for {asset.external_id}")
-            duration = int(asset.duration or 60)
             return {"chat_velocity": np.zeros(duration, dtype=np.float32)}
 
-        # Chat log format: each line is a JSON object with 'offset' (seconds) and 'message'
-        duration = int(asset.duration or 3600)
         velocity = np.zeros(duration, dtype=np.float32)
 
-        with asset.chat_path.open() as f:
-            for line in f:
-                try:
-                    msg = json.loads(line.strip())
-                    offset = int(msg.get("offset", msg.get("time_in_seconds", 0)))
-                    if 0 <= offset < duration:
-                        text = msg.get("message", msg.get("body", ""))
-                        weight = self._message_weight(text)
-                        velocity[offset] += weight
-                except (json.JSONDecodeError, KeyError, ValueError):
-                    continue
+        # Support JSONL and standard yt-dlp comments JSON structure
+        try:
+            with asset.chat_path.open() as f:
+                first_char = f.read(1)
+                f.seek(0)
+                if first_char == "{":
+                    # Check if entire file is a single JSON object (yt-dlp comments format)
+                    try:
+                        data = json.load(f)
+                        comments = data.get("comments", [])
+                        if comments:
+                            for c in comments:
+                                offset = int(c.get("time_in_seconds", c.get("time", 0)))
+                                if 0 <= offset < duration:
+                                    text = c.get("text", c.get("body", ""))
+                                    velocity[offset] += self._message_weight(text)
+                            logger.debug(f"[Chat] {asset.external_id}: parsed {len(comments)} comments from JSON")
+                            return {"chat_velocity": velocity}
+                    except json.JSONDecodeError:
+                        f.seek(0)
+
+                # Line-by-line JSONL format
+                f.seek(0)
+                for line in f:
+                    line_str = line.strip()
+                    if not line_str:
+                        continue
+                    try:
+                        msg = json.loads(line_str)
+                        offset = int(msg.get("offset", msg.get("time_in_seconds", msg.get("time", 0))))
+                        if 0 <= offset < duration:
+                            text = msg.get("message", msg.get("body", msg.get("text", "")))
+                            weight = self._message_weight(text)
+                            velocity[offset] += weight
+                    except (json.JSONDecodeError, KeyError, ValueError):
+                        continue
+        except Exception as exc:
+            logger.warning(f"[Chat] Error reading chat log {asset.chat_path.name}: {exc}")
 
         logger.debug(f"[Chat] {asset.external_id}: max velocity={velocity.max():.1f} msgs/sec")
         return {"chat_velocity": velocity}

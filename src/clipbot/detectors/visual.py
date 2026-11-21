@@ -1,5 +1,8 @@
 """Universal visual detector — extracts scene transitions, kinetic motion, high-impact flashes, and intermission screens.
 
+Streaming execution: Processes frames sequentially at 1 fps with O(1) memory overhead.
+Never accumulates raw frames in memory, eliminating OOM crashes on multi-hour streams.
+
 Signals produced:
   visual_scene        — 1Hz inter-frame scene cut / camera switch magnitude (universal)
   visual_motion       — 1Hz kinetic action intensity and optical displacement (sports, action, cartoons)
@@ -16,6 +19,7 @@ import cv2
 import numpy as np
 from loguru import logger
 
+from clipbot.core.media import probe_media_duration
 from clipbot.core.models import Asset
 
 # High-impact color vignette / flash thresholds
@@ -56,73 +60,6 @@ def _is_dark_credit_frame(gray: np.ndarray) -> bool:
     return 0.003 < edge_ratio < 0.15
 
 
-def _detect_intermissions_and_credits(frames_gray: list[np.ndarray], min_duration: int = 12) -> np.ndarray:
-    """
-    Detect static loading screens, 'Starting Soon' screens, BRB screens,
-    and end credits sequences across the timeline.
-    Returns 1Hz array where 1.0 = intermission / non-content screen.
-    """
-    n = len(frames_gray)
-    is_non_content = np.zeros(n, dtype=bool)
-
-    for i in range(n):
-        gray = frames_gray[i]
-        # 1. Dark credit check
-        if _is_dark_credit_frame(gray):
-            is_non_content[i] = True
-            continue
-
-        # 2. Static / frozen screen check against previous frame (loading screens, pause screens)
-        if i > 0:
-            diff = float(cv2.absdiff(gray, frames_gray[i - 1]).mean())
-            if diff < 1.5:  # Nearly identical consecutive frame
-                is_non_content[i] = True
-
-    # Only flag runs that persist for at least min_duration consecutive seconds
-    intermission_signal = np.zeros(n, dtype=np.float32)
-    start_run = None
-    for i in range(n):
-        if is_non_content[i]:
-            if start_run is None:
-                start_run = i
-        else:
-            if start_run is not None:
-                length = i - start_run
-                if length >= min_duration:
-                    intermission_signal[start_run:i] = 1.0
-                start_run = None
-    if start_run is not None and (n - start_run) >= min_duration:
-        intermission_signal[start_run:n] = 1.0
-
-    return intermission_signal
-
-
-def _extract_frames_1fps(video_path: Path, sample_fps: int = 1) -> list[np.ndarray]:
-    """Extract one frame per second from a video file using OpenCV."""
-    cap = cv2.VideoCapture(str(video_path))
-    if not cap.isOpened():
-        raise RuntimeError(f"Cannot open video: {video_path}")
-
-    native_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    step = max(1, int(native_fps / sample_fps))
-
-    frames: list[np.ndarray] = []
-    frame_idx = 0
-    while True:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-        ret, frame = cap.read()
-        if not ret:
-            break
-        frames.append(frame)
-        frame_idx += step
-        if total_frames > 0 and frame_idx >= total_frames:
-            break
-
-    cap.release()
-    return frames
-
-
 class VisualDetector:
     name = "visual"
 
@@ -134,11 +71,19 @@ class VisualDetector:
 
     def _analyse_sync(self, media_path: Path, asset: Asset) -> dict[str, np.ndarray]:
         logger.debug(f"[Visual] Analysing {media_path.name}")
-        try:
-            frames = _extract_frames_1fps(media_path, SAMPLE_FPS)
-        except Exception as exc:
-            logger.warning(f"[Visual] Frame extraction failed: {exc}")
-            dur = int(asset.duration or 60)
+        cache_file = media_path.with_name(f"{media_path.stem}_visual_signals.npz")
+        if cache_file.exists():
+            try:
+                data = np.load(str(cache_file))
+                logger.info(f"[Visual] Loaded cached signals from {cache_file.name}")
+                return {k: data[k] for k in data.files}
+            except Exception as e:
+                logger.warning(f"[Visual] Failed loading cache {cache_file}: {e}")
+
+        cap = cv2.VideoCapture(str(media_path))
+        if not cap.isOpened():
+            logger.warning(f"[Visual] Cannot open video file: {media_path}")
+            dur = int(probe_media_duration(media_path) or asset.duration or 60)
             return {
                 "visual_impact": np.zeros(dur, dtype=np.float32),
                 "visual_scene": np.zeros(dur, dtype=np.float32),
@@ -146,26 +91,91 @@ class VisualDetector:
                 "visual_intermission": np.zeros(dur, dtype=np.float32),
             }
 
-        n = len(frames)
-        raw_impact = np.zeros(n, dtype=np.float32)
-        scene_signal = np.zeros(n, dtype=np.float32)
-        motion_signal = np.zeros(n, dtype=np.float32)
-        frames_gray: list[np.ndarray] = []
+        native_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+        step = max(1, int(round(native_fps / SAMPLE_FPS)))
+
+        raw_impact_list: list[float] = []
+        scene_list: list[float] = []
+        motion_list: list[float] = []
+        is_non_content_list: list[bool] = []
 
         prev_gray: np.ndarray | None = None
-        for i, frame in enumerate(frames):
-            raw_impact[i] = _detect_impact_vignette(frame)
+        frame_idx = 0
 
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-            frames_gray.append(gray)
-            if prev_gray is not None:
-                diff = cv2.absdiff(gray, prev_gray)
-                scene_signal[i] = float(diff.mean()) / 255.0
-                motion_signal[i] = float(np.std(diff)) / 128.0
-            prev_gray = gray
+        # Stream frames sequentially: O(1) memory usage regardless of video duration
+        while True:
+            if frame_idx % step == 0:
+                ret, frame = cap.read()
+                if not ret or frame is None:
+                    break
 
-        # Detect sustained static loading screens, 'Starting Soon', BRB, and dark credits
-        intermission_signal = _detect_intermissions_and_credits(frames_gray, min_duration=12)
+                # Downsample frame to 360p height for fast metric computation
+                h, w = frame.shape[:2]
+                if h > 360:
+                    scale = 360.0 / h
+                    frame_small = cv2.resize(frame, (int(w * scale), 360), interpolation=cv2.INTER_AREA)
+                else:
+                    frame_small = frame
+
+                # 1. Color flash / damage vignette
+                impact_val = _detect_impact_vignette(frame_small)
+                raw_impact_list.append(impact_val)
+
+                # 2. Convert to grayscale for scene/motion/intermission checks
+                gray = cv2.cvtColor(frame_small, cv2.COLOR_BGR2GRAY)
+                is_credit = _is_dark_credit_frame(gray)
+                is_static = False
+
+                if prev_gray is not None:
+                    diff = cv2.absdiff(gray, prev_gray)
+                    diff_mean = float(diff.mean())
+                    scene_list.append(diff_mean / 255.0)
+                    motion_list.append(float(np.std(diff)) / 128.0)
+                    if diff_mean < 1.5:
+                        is_static = True
+                else:
+                    scene_list.append(0.0)
+                    motion_list.append(0.0)
+
+                is_non_content_list.append(bool(is_credit or is_static))
+                prev_gray = gray
+                # Frame memory released immediately
+            else:
+                ret = cap.grab()
+                if not ret:
+                    break
+            frame_idx += 1
+
+        cap.release()
+
+        n = len(raw_impact_list)
+        if n == 0:
+            dur = int(probe_media_duration(media_path) or asset.duration or 60)
+            return {
+                "visual_impact": np.zeros(dur, dtype=np.float32),
+                "visual_scene": np.zeros(dur, dtype=np.float32),
+                "visual_motion": np.zeros(dur, dtype=np.float32),
+                "visual_intermission": np.zeros(dur, dtype=np.float32),
+            }
+
+        raw_impact = np.array(raw_impact_list, dtype=np.float32)
+        scene_signal = np.array(scene_list, dtype=np.float32)
+        motion_signal = np.array(motion_list, dtype=np.float32)
+
+        # Detect sustained static loading screens, 'Starting Soon', BRB, and dark credits (min 12s)
+        intermission_signal = np.zeros(n, dtype=np.float32)
+        start_run = None
+        for i, non_content in enumerate(is_non_content_list):
+            if non_content:
+                if start_run is None:
+                    start_run = i
+            else:
+                if start_run is not None:
+                    if (i - start_run) >= 12:
+                        intermission_signal[start_run:i] = 1.0
+                    start_run = None
+        if start_run is not None and (n - start_run) >= 12:
+            intermission_signal[start_run:n] = 1.0
 
         # Smooth impact signal to expand instantaneous hits to adjacent window (±2s)
         impact_smooth = np.zeros(n, dtype=np.float32)
@@ -178,10 +188,14 @@ class VisualDetector:
         logger.debug(
             f"[Visual] {asset.external_id}: {n}s, impact peaks={int((impact_smooth > 0.5).sum())}, intermission={int(intermission_signal.sum())}s"
         )
-        return {
+        res = {
             "visual_impact": impact_smooth,
             "visual_scene": scene_signal,
             "visual_motion": motion_signal,
             "visual_intermission": intermission_signal,
         }
-
+        try:
+            np.savez_compressed(str(cache_file), **res)
+        except Exception as e:
+            logger.debug(f"[Visual] Failed saving cache {cache_file}: {e}")
+        return res
