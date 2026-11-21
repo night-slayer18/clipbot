@@ -149,8 +149,8 @@ class FacecamDetector:
         # Find dominant quadrant
         dominant_quadrant, dominant_boxes = max(quadrant_counts.items(), key=lambda item: len(item[1]))
 
-        # Temporal stability check: must be seen in at least 40% of sampled frames
-        min_required_frames = max(3, int(sample_count * 0.40))
+        # Temporal stability check: must be seen in at least 70% of sampled frames
+        min_required_frames = max(3, int(sample_count * 0.70))
         if len(dominant_boxes) < min_required_frames:
             logger.info(
                 f"[Facecam] Corner detections in '{dominant_quadrant}' ({len(dominant_boxes)}) "
@@ -167,8 +167,8 @@ class FacecamDetector:
         std_x = float(np.std(xs))
         std_y = float(np.std(ys))
 
-        # If the detected face moves erratically (>35px std dev), it is in-game motion, not a webcam
-        if std_x > 35.0 or std_y > 35.0:
+        # Reject erratic motion (>15px std dev) indicating gameplay motion
+        if std_x > 15.0 or std_y > 15.0:
             logger.info(f"[Facecam] Rejected corner face in '{dominant_quadrant}': erratic motion (std_x={std_x:.1f}, std_y={std_y:.1f})")
             return None
 
@@ -223,8 +223,8 @@ class FacecamDetector:
 
         # Calculate composite confidence score (0.0 - 1.0)
         detection_ratio = len(dominant_boxes) / sample_count
-        jitter_penalty = min(1.0, (std_x + std_y) / 50.0)
-        confidence = float(np.clip(detection_ratio * (1.0 - 0.4 * jitter_penalty), 0.0, 1.0))
+        jitter_penalty = min(1.0, (std_x + std_y) / 25.0)
+        confidence = float(np.clip(detection_ratio * (1.0 - jitter_penalty), 0.0, 1.0))
 
         logger.info(
             f"[Facecam] Locked corner facecam in '{dominant_quadrant}': "
