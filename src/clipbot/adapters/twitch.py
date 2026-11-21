@@ -161,6 +161,34 @@ class TwitchAdapter:
         return await MediaDownloader.download_media(asset.url, output)
 
     async def fetch_chat(self, asset: Asset, dest_dir: Path) -> Path | None:
+        """Fetch Twitch VOD chat comments replay using yt-dlp comment extractor."""
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        chat_output = dest_dir / f"twitch_{asset.external_id}.chat.json"
+        if chat_output.exists() and chat_output.stat().st_size > 50:
+            return chat_output
+
+        cmd = [
+            "yt-dlp",
+            "--write-comments",
+            "--skip-download",
+            "-o", str(dest_dir / f"twitch_{asset.external_id}"),
+            asset.url,
+        ]
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+            )
+            await asyncio.wait_for(proc.wait(), timeout=15.0)
+            # yt-dlp outputs comments in .info.json or .comments.json
+            comments_file = dest_dir / f"twitch_{asset.external_id}.comments.json"
+            info_file = dest_dir / f"twitch_{asset.external_id}.info.json"
+            if comments_file.exists() and comments_file.stat().st_size > 50:
+                return comments_file
+            if info_file.exists() and info_file.stat().st_size > 50:
+                return info_file
+        except Exception as exc:
+            logger.debug(f"[Twitch] Chat comment extraction notice for {asset.external_id}: {exc}")
+
         return None
 
     @staticmethod
