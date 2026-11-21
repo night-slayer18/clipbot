@@ -18,13 +18,15 @@ from tests.conftest import generate_real_mp4
 
 
 @pytest.mark.asyncio
-async def test_review_ui_endpoints_wired(tmp_path: Path):
+async def test_review_ui_endpoints_wired(tmp_path: Path, monkeypatch):
     db_path = tmp_path / "review_test.db"
     
     # Configure custom test DB path
     config = get_config()
     orig_db_path = config.database.path
     config.database.path = str(db_path)
+    # Allow open access in local tests
+    monkeypatch.setenv("CLIPBOT_REVIEW_ALLOW_OPEN", "1")
 
     try:
         app = create_app()

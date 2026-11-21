@@ -24,11 +24,15 @@ def test_visual_detector_impact_vignette():
     assert _detect_impact_vignette(normal_frame) == 0.0
 
     # 2. High-impact red vignette / damage flash
+    # Static red scoreboard with no motion -> not impact (diff_mean=0.0)
     impact_frame = np.zeros((360, 640, 3), dtype=np.uint8)
     impact_frame[:, :, 2] = 160  # Red
     impact_frame[:, :, 1] = 50   # Green
     impact_frame[:, :, 0] = 50   # Blue
-    assert _detect_impact_vignette(impact_frame) == 1.0
+    # Without motion: static red screen should NOT fire (e.g. red scoreboard/menu)
+    assert _detect_impact_vignette(impact_frame, diff_mean=0.0) == 0.0
+    # With motion: red flash + scene change = genuine impact (e.g. GTA wasted screen)
+    assert _detect_impact_vignette(impact_frame, diff_mean=5.0) == 1.0
 
 
 def test_visual_detector_real_video(tmp_path: Path):

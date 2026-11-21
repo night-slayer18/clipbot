@@ -48,22 +48,27 @@ def test_true_peak_picking_yields_multiple_distinct_clips():
     """Verify that multiple high-scoring moments yield distinct clips rather than collapsing to 1."""
     duration = 300  # 5 minutes
     audio = np.zeros(duration, dtype=np.float32)
+    onset = np.zeros(duration, dtype=np.float32)
     chat = np.zeros(duration, dtype=np.float32)
 
     # Peak 1 at second 40
     audio[38:43] = 6.0
+    onset[38:43] = 4.0
     chat[39:44] = 7.0
 
     # Peak 2 at second 120
     audio[118:124] = 8.0
+    onset[118:124] = 5.0
     chat[120:125] = 9.0
 
     # Peak 3 at second 220
     audio[218:223] = 5.5
+    onset[218:223] = 3.5
     chat[219:224] = 6.0
 
     signals = {
         "audio_rms": audio,
+        "audio_onset": onset,
         "chat_velocity": chat,
     }
 
@@ -95,12 +100,15 @@ def test_dead_chat_signal_weight_renormalization():
     duration = 120
     audio = np.zeros(duration, dtype=np.float32)
     audio[45:55] = 10.0  # Big audio spike
+    onset = np.zeros(duration, dtype=np.float32)
+    onset[45:55] = 5.0
 
     # Chat is completely dead (all zeros)
     chat = np.zeros(duration, dtype=np.float32)
 
     signals_with_dead_chat = {
         "audio_rms": audio,
+        "audio_onset": onset,
         "chat_velocity": chat,
     }
 
@@ -124,12 +132,15 @@ def test_empty_fallback_does_not_truncate_long_video():
     audio = np.zeros(duration, dtype=np.float32)
     # Peak at minute 8 (second 480)
     audio[475:485] = 8.0
+    onset = np.zeros(duration, dtype=np.float32)
+    onset[475:485] = 4.0
 
     # An empty fallback signal of length 60 (as was happening with fallback detectors)
     short_fallback = np.zeros(60, dtype=np.float32)
 
     signals = {
         "audio_rms": audio,
+        "audio_onset": onset,
         "chat_velocity": short_fallback,
     }
 
@@ -165,6 +176,7 @@ async def test_review_ui_http_basic_auth(tmp_path: Path, monkeypatch):
     # 1. When password is set, unauthenticated requests must be rejected (401)
     monkeypatch.setenv("CLIPBOT_REVIEW_PASSWORD", "secret123")
     monkeypatch.setenv("CLIPBOT_REVIEW_USER", "admin")
+    monkeypatch.delenv("CLIPBOT_REVIEW_ALLOW_OPEN", raising=False)
 
     app = create_app()
     transport = httpx.ASGITransport(app=app)

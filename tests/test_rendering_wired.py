@@ -28,11 +28,20 @@ def test_caption_ass_header_and_safe_zone():
     assert "PlayResY: 1920" in ASS_HEADER
     assert "WrapStyle: 2" in ASS_HEADER
     assert "MarginV, Encoding\nStyle: Default," in ASS_HEADER
-    # MarginV must be 700 to sit at Y = 1220 (Universal Mobile Safe Zone)
+    # Style line must have exactly 23 fields (1 name + 22 values after the comma)
+    # Verify MarginV=700 lands in the correct field position
     assert ",60,60,700,1" in ASS_HEADER
-    # Primary white, Secondary yellow
+    # Primary white, Secondary yellow — verify these are in the correct colour field positions
     assert "&H00FFFFFF" in ASS_HEADER
     assert "&H0000FFFF" in ASS_HEADER
+    # Only one font name — no comma-separated fallback list that shifts all fields
+    style_line = [l for l in ASS_HEADER.splitlines() if l.startswith("Style: Default,")][0]
+    parts = style_line.split(",")
+    # Correct field count: "Style: Default" + 22 value fields = 23 total (index 0..22)
+    assert len(parts) == 23, f"Style line has {len(parts)} fields, expected 23. Got: {style_line}"
+    # Fontsize must be numeric (74), not a font name like 'Impact'
+    fontsize_field = parts[2]
+    assert fontsize_field.isdigit(), f"Fontsize field '{fontsize_field}' is not numeric — font fallback list shifted fields"
 
 
 def test_sanitize_and_chunk_words():
