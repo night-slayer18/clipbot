@@ -9,6 +9,7 @@ from typing import Optional
 from loguru import logger
 
 from clipbot.core.config import get_config, load_profile
+from clipbot.core.media import probe_media_resolution
 from clipbot.detectors.facecam import FacecamDetector
 from clipbot.render.captions import CaptionGenerator
 from clipbot.render.cut import cut_clip
@@ -55,18 +56,37 @@ class VideoCompositor:
             if layout == "split_stack":
                 facecam = await self.facecam_detector.detect(raw_trimmed)
 
-            if layout == "split_stack" and facecam is not None:
-                logger.info(f"[Compositor] Using Split-Stack layout with facecam ({facecam.to_ffmpeg_crop()})")
-                # Gameplay centered: crop center 1280x720 from typical 1920x1080
-                gameplay_crop = "1080:1080:420:0"
+            # Gate Split-Stack by confidence (minimum 0.60) to prevent false-positives
+            if layout == "split_stack" and facecam is not None and facecam.confidence >= 0.60:
+                src_w, src_h = probe_media_resolution(raw_trimmed)
+                logger.info(
+                    f"[Compositor] Using Split-Stack layout with facecam ({facecam.to_ffmpeg_crop(src_w, src_h)}) "
+                    f"[confidence={facecam.confidence:.2f}, quadrant={facecam.quadrant}, src={src_w}x{src_h}]"
+                )
+                # Dynamically calculate gameplay crop matching exact 1080:1248 bottom slot ratio for any resolution
+                bottom_aspect = 1080.0 / 1248.0
+                crop_w = int(round(src_h * bottom_aspect))
+                crop_w = (crop_w // 2) * 2
+                crop_w = min(crop_w, src_w)
+                crop_x = int(round((src_w - crop_w) / 2.0))
+                crop_x = (crop_x // 2) * 2
+                gameplay_crop = f"{crop_w}:{src_h}:{crop_x}:0"
+
                 await reframe_split_stack(
                     source=raw_trimmed,
                     output=reframed_video,
-                    top_crop=facecam.to_ffmpeg_crop(),
+                    top_crop=facecam.to_ffmpeg_crop(src_w, src_h),
                     bottom_crop=gameplay_crop,
                 )
             else:
-                logger.info("[Compositor] Using Blur-Canvas layout")
+                if layout == "split_stack":
+                    conf_val = getattr(facecam, "confidence", 0.0)
+                    logger.info(
+                        f"[Compositor] Corner facecam not locked (confidence={conf_val:.2f} < 0.60). "
+                        "Falling back to Blur-Canvas layout (Safe Layout)."
+                    )
+                else:
+                    logger.info(f"[Compositor] Using Blur-Canvas layout (layout={layout})")
                 await reframe_blur_canvas(source=raw_trimmed, output=reframed_video)
 
             # 3. Generate word-level karaoke subtitles
@@ -101,7 +121,8 @@ class VideoCompositor:
             "ffmpeg", "-y",
             "-i", str(video_path),
             "-vf", f"ass='{escaped_ass}'",
-            "-c:v", "libx264", "-preset", "fast", "-crf", "19",
+            "-c:v", "libx264", "-preset", "medium", "-crf", "18",
+            "-b:v", "8M", "-maxrate", "12M", "-bufsize", "16M",
             "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "192k",
             "-movflags", "+faststart",
