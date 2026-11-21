@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 import aiosqlite
+import numpy as np
 from loguru import logger
 
 from clipbot.adapters.kick import KickAdapter
@@ -14,6 +15,7 @@ from clipbot.adapters.twitch import TwitchAdapter
 from clipbot.adapters.youtube import YouTubeAdapter
 from clipbot.core.config import get_config, load_profile
 from clipbot.core.db import get_db, init_db
+from clipbot.core.media import probe_media_duration
 from clipbot.core.models import Asset, AssetStatus, Clip, ClipStatus
 from clipbot.core.repository import (
     get_asset_by_external, get_signals, has_signals, insert_clip, update_asset_status,
@@ -29,7 +31,7 @@ from clipbot.render.compositor import VideoCompositor
 from clipbot.scoring.combine import score_and_window
 
 
-async def run_cycle(profile_name: str = "gta_chaos", auto_render: bool = True) -> list[Clip]:
+async def run_cycle(profile_name: str = "gta6_chaos", auto_render: bool = True) -> list[Clip]:
     """
     Run one full pipeline cycle:
       1. Discover top viral moments from Twitch, Kick, YouTube (Gaming, Sports, Movies, IRL)
@@ -42,6 +44,8 @@ async def run_cycle(profile_name: str = "gta_chaos", auto_render: bool = True) -
     config = get_config()
     db_path = config.database.path
     await init_db(db_path)
+
+    profile = load_profile(profile_name)
 
     storage = StorageManager(
         media_dir=config.storage.media_dir,
@@ -72,7 +76,7 @@ async def run_cycle(profile_name: str = "gta_chaos", auto_render: bool = True) -
     audio_det = AudioDetector()
     chat_det = ChatDetector()
     visual_det = VisualDetector()
-    transcript_det = TranscriptDetector(model_size="base")
+    transcript_det = TranscriptDetector(model_size="base", profile_name=profile_name)
     compositor = VideoCompositor(profile_name=profile_name)
 
     db = await get_db(db_path)
@@ -82,11 +86,14 @@ async def run_cycle(profile_name: str = "gta_chaos", auto_render: bool = True) -
         # 2. Process assets up to cycle limit
         limit = config.pipeline.max_clips_per_cycle
         for asset in all_discovered[:limit]:
-            # Skip if asset was already fully processed in a previous cycle
+            # Fix Flaw 8: Skip if asset was already fully processed in a previous cycle
+            # Check SQLite directly for existing clips or completed status regardless of local cache pruning
             existing = await get_asset_by_external(db, asset.source.value, asset.external_id)
-            if existing and existing.status in (AssetStatus.READY, AssetStatus.SCORED, AssetStatus.ARCHIVED):
-                if existing.local_path and existing.local_path.exists():
-                    logger.info(f"[Pipeline] Skipping already processed asset: {asset.title[:50]}")
+            if existing:
+                async with db.execute("SELECT COUNT(*) FROM clips WHERE asset_id = ?", (existing.id,)) as cur:
+                    clip_count = (await cur.fetchone())[0]
+                if clip_count > 0 or existing.status in (AssetStatus.SCORED, AssetStatus.ARCHIVED):
+                    logger.info(f"[Pipeline] Skipping already processed asset ({clip_count} clips exist): {asset.title[:50]}")
                     continue
 
             logger.info(f"\n[Pipeline] === Processing Asset: {asset.title[:60]} ({asset.source.value}) ===")
@@ -100,11 +107,22 @@ async def run_cycle(profile_name: str = "gta_chaos", auto_render: bool = True) -
             try:
                 asset.local_path = await adapter.download(asset, storage.media_dir)
                 asset.status = AssetStatus.READY
+                # Accurately probe media duration if missing
+                if not asset.duration or asset.duration <= 0:
+                    asset.duration = probe_media_duration(asset.local_path)
                 await update_asset_status(db, asset.id, AssetStatus.READY)
             except Exception as exc:
                 logger.error(f"[Pipeline] Download failed for {asset.external_id}: {exc}")
                 await update_asset_status(db, asset.id, AssetStatus.ERROR)
                 continue
+
+            # Fix Flaw 6: Wire chat fetch
+            try:
+                chat_file = await adapter.fetch_chat(asset, storage.media_dir)
+                if chat_file and chat_file.exists():
+                    asset.chat_path = chat_file
+            except Exception as exc:
+                logger.debug(f"[Pipeline] Chat fetch notice: {exc}")
 
             # Check if signals already cached
             signals = await get_signals(db, asset.id)
@@ -129,8 +147,25 @@ async def run_cycle(profile_name: str = "gta_chaos", auto_render: bool = True) -
                 except Exception as exc:
                     logger.warning(f"[Pipeline] Visual detector error: {exc}")
 
+                candidate_windows = None
+                if asset.duration and asset.duration > 300 and "audio_rms" in signals:
+                    coarse_len = min(len(signals["audio_rms"]), len(signals.get("visual_impact", signals["audio_rms"])))
+                    combined_coarse = (
+                        signals["audio_rms"][:coarse_len]
+                        + signals.get("visual_impact", np.zeros(coarse_len, dtype=np.float32))[:coarse_len]
+                        + signals.get("visual_motion", np.zeros(coarse_len, dtype=np.float32))[:coarse_len]
+                    )
+                    from clipbot.scoring.combine import _find_local_peaks
+                    coarse_peaks = _find_local_peaks(combined_coarse, min_distance=max(20, int(config.pipeline.min_gap_seconds * 0.5)), min_score=0.3)
+                    candidate_windows = [
+                        (max(0.0, float(p - 15)), min(float(asset.duration), float(p + 35)))
+                        for p in coarse_peaks[:profile.get("scoring", {}).get("top_n", 3) * 4]
+                    ]
+
                 try:
-                    trans_sig = await transcript_det.signals(asset, asset.local_path)
+                    trans_sig = await transcript_det.signals(
+                        asset, asset.local_path, profile_name=profile_name, candidate_windows=candidate_windows
+                    )
                     signals.update(trans_sig)
                 except Exception as exc:
                     logger.warning(f"[Pipeline] Transcript detector error: {exc}")
@@ -140,13 +175,15 @@ async def run_cycle(profile_name: str = "gta_chaos", auto_render: bool = True) -
                     await upsert_signal(db, asset.id, name, arr)
 
             # 3. Score & Window candidate highlights
+            # Fix Flaw 1 & 2: Read scoring.top_n from active profile, dynamic envelope, peak-picking
+            scoring_top_n = profile.get("scoring", {}).get("top_n", 3)
             candidates = score_and_window(
                 signals=signals,
                 profile_name=profile_name,
                 min_duration=config.pipeline.min_clip_duration,
                 max_duration=config.pipeline.max_clip_duration,
                 min_gap=float(config.pipeline.min_gap_seconds),
-                top_n=3,  # Top moments per asset
+                top_n=scoring_top_n,
             )
 
             # If asset is already a short clip (<60s) and no window found, treat full asset as candidate
@@ -191,6 +228,8 @@ async def run_cycle(profile_name: str = "gta_chaos", auto_render: bool = True) -
                 processed_clips.append(clip)
                 logger.success(f"[Pipeline] Queued Clip: '{clip.title}' (Score: {clip.overall_score:.2f})")
 
+            await update_asset_status(db, asset.id, AssetStatus.SCORED)
+
         # 5. Prune cache if needed
         try:
             storage.prune_media_cache()
@@ -208,24 +247,33 @@ async def process_url_pipeline(
     url: str,
     profile_name: str = "general_viral",
     max_clips: int = 3,
+    layout: Optional[str] = None,
 ) -> list[Clip]:
     """Execute the full highlights pipeline on a single URL, rendering up to max_clips."""
     config = get_config()
     db_path = config.database.path
     await init_db(db_path)
 
-    storage = StorageManager()
-    logger.info(f"[ClipPipeline] Processing highlights on {url} (max {max_clips} clips)")
+    storage = StorageManager(
+        media_dir=config.storage.media_dir,
+        clips_dir=config.storage.clips_dir,
+        max_cache_gb=config.storage.max_cache_gb,
+    )
+    logger.info(f"[ClipPipeline] Processing highlights on {url} (max {max_clips} clips, layout={layout or 'auto'})")
 
     from clipbot.adapters.downloader import MediaDownloader
-    temp_media = storage.media_dir / "test_input.mp4"
+    import hashlib
+    url_hash = hashlib.sha256(url.encode()).hexdigest()[:10]
+    temp_media = storage.media_dir / f"stream_{url_hash}.mp4"
     downloaded = await MediaDownloader.download_media(url, temp_media)
 
+    media_dur = probe_media_duration(downloaded)
     asset = Asset(
-        external_id="url_stream_clip",
-        creator="ClipBot Stream",
-        title="Stream Highlights",
+        external_id=f"stream_{url_hash}",
+        creator="Stream Creator",
+        title=f"Stream Highlights {url_hash}",
         url=url,
+        duration=media_dur,
         local_path=downloaded,
         status=AssetStatus.READY,
     )
@@ -236,23 +284,69 @@ async def process_url_pipeline(
     # Extract signals
     audio_det = AudioDetector()
     visual_det = VisualDetector()
-    transcript_det = TranscriptDetector(model_size="base")
+    transcript_det = TranscriptDetector(model_size="base", profile_name=profile_name)
 
     logger.info("[ClipPipeline] Running multi-modal detectors...")
     signals = {}
-    signals.update(await audio_det.signals(asset, downloaded))
-    signals.update(await visual_det.signals(asset, downloaded))
-    signals.update(await transcript_det.signals(asset, downloaded))
+    existing_signals = await get_signals(db, asset.id)
+    if existing_signals:
+        signals.update(existing_signals)
+        logger.info(f"[ClipPipeline] Loaded {len(signals)} cached signal(s) from database for {asset.external_id}")
 
-    # Save signals
-    for name, arr in signals.items():
-        await upsert_signal(db, asset.id, name, arr)
+    if "audio_rms" not in signals:
+        try:
+            audio_sig = await audio_det.signals(asset, downloaded)
+            signals.update(audio_sig)
+            for name, arr in audio_sig.items():
+                await upsert_signal(db, asset.id, name, arr)
+        except Exception as exc:
+            logger.warning(f"[ClipPipeline] Audio detector error: {exc}")
+
+    if "visual_scene" not in signals:
+        try:
+            vis_sig = await visual_det.signals(asset, downloaded)
+            signals.update(vis_sig)
+            for name, arr in vis_sig.items():
+                await upsert_signal(db, asset.id, name, arr)
+        except Exception as exc:
+            logger.warning(f"[ClipPipeline] Visual detector error: {exc}")
+
+    candidate_windows = None
+    if media_dur and media_dur > 300 and "audio_rms" in signals:
+        coarse_len = min(len(signals["audio_rms"]), len(signals.get("visual_impact", signals["audio_rms"])))
+        combined_coarse = (
+            signals["audio_rms"][:coarse_len]
+            + signals.get("visual_impact", np.zeros(coarse_len, dtype=np.float32))[:coarse_len]
+            + signals.get("visual_motion", np.zeros(coarse_len, dtype=np.float32))[:coarse_len]
+        )
+        from clipbot.scoring.combine import _find_local_peaks
+        coarse_peaks = _find_local_peaks(combined_coarse, min_distance=max(20, int(config.pipeline.min_gap_seconds * 0.5)), min_score=0.3)
+        candidate_windows = [
+            (max(0.0, float(p - 15)), min(float(media_dur), float(p + 35)))
+            for p in coarse_peaks[:max_clips * 4]
+        ]
+
+    if "transcript_hype" not in signals:
+        try:
+            trans_sig = await transcript_det.signals(asset, downloaded, profile_name=profile_name, candidate_windows=candidate_windows)
+            signals.update(trans_sig)
+            for name, arr in trans_sig.items():
+                await upsert_signal(db, asset.id, name, arr)
+        except Exception as exc:
+            logger.warning(f"[ClipPipeline] Transcript detector error: {exc}")
 
     # Window candidates (ignoring intermission and credits)
-    candidates = score_and_window(signals, profile_name=profile_name, top_n=max_clips)
+    candidates = score_and_window(
+        signals=signals,
+        profile_name=profile_name,
+        min_duration=config.pipeline.min_clip_duration,
+        max_duration=config.pipeline.max_clip_duration,
+        min_gap=float(config.pipeline.min_gap_seconds),
+        top_n=max_clips,
+    )
     if not candidates:
         logger.warning("[ClipPipeline] No peaks found; using opening segment")
-        sig_len = float(len(next(iter(signals.values())))) if signals else 30.0
+        sig_len = float(media_dur or 30.0)
         from clipbot.scoring.combine import ClipCandidate
         candidates = [ClipCandidate(start=0.0, end=min(30.0, sig_len), score=1.0, breakdown={})]
 
@@ -263,10 +357,10 @@ async def process_url_pipeline(
     processed_clips: list[Clip] = []
 
     for idx, cand in enumerate(candidates, 1):
-        filename = f"clip_highlight_{idx}_of_{len(candidates)}_9x16.mp4" if len(candidates) > 1 else "test_output_9x16.mp4"
+        filename = f"clip_{url_hash}_{idx}_9x16.mp4"
         out_path = storage.clips_dir / filename
         logger.info(f"[ClipPipeline] Rendering highlight {idx}/{len(candidates)} [{cand.start:.1f}s -> {cand.end:.1f}s]")
-        rendered = await compositor.render_short(downloaded, cand.start, cand.end, out_path)
+        rendered = await compositor.render_short(downloaded, cand.start, cand.end, out_path, force_layout=layout)
 
         clip = Clip(
             asset_id=asset.id,
@@ -285,5 +379,7 @@ async def process_url_pipeline(
         processed_clips.append(clip)
         logger.success(f"[ClipPipeline] Successfully queued clip: '{clip.title}' -> {rendered.name}")
 
+    await update_asset_status(db, asset.id, AssetStatus.SCORED)
     await db.close()
     return processed_clips
+

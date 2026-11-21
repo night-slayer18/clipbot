@@ -194,12 +194,13 @@ def clip_url(
     url: str = typer.Argument(..., help="URL of stream or video (Twitch, Kick, YouTube)"),
     profile: str = typer.Option("general_viral", "--profile", "-p", help="Scoring profile"),
     max_clips: int = typer.Option(3, "--max-clips", "-c", help="Number of highlights to extract and render"),
+    layout: Optional[str] = typer.Option(None, "--layout", "-l", help="Layout override: 'split_stack' or 'blur_canvas' (default: auto)"),
 ) -> None:
     """Run full highlights pipeline on a target URL: download -> detect -> score -> render 9:16 vertical shorts."""
     setup_logging("DEBUG")
-    console.print(f"[bold cyan]🎬 Processing highlights on URL:[/bold cyan] {url} [dim](max {max_clips} clips)[/dim]")
+    console.print(f"[bold cyan]🎬 Processing highlights on URL:[/bold cyan] {url} [dim](max {max_clips} clips, layout={layout or 'auto'})[/dim]")
     from clipbot.pipeline import process_url_pipeline
-    asyncio.run(process_url_pipeline(url, profile_name=profile, max_clips=max_clips))
+    asyncio.run(process_url_pipeline(url, profile_name=profile, max_clips=max_clips, layout=layout))
 
 
 @app.command()
