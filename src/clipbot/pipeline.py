@@ -180,7 +180,7 @@ async def run_cycle(profile_name: str = "gta6_chaos", auto_render: bool = True) 
                 profile_name=profile_name,
                 min_duration=config.pipeline.min_clip_duration,
                 max_duration=config.pipeline.max_clip_duration,
-                min_gap=-1.0,
+                min_gap=float(config.pipeline.min_gap_seconds),
                 top_n=scoring_top_n,
                 media_duration=asset.duration,
             )
@@ -339,7 +339,7 @@ async def process_url_pipeline(
         profile_name=profile_name,
         min_duration=config.pipeline.min_clip_duration,
         max_duration=config.pipeline.max_clip_duration,
-        min_gap=-1.0,
+        min_gap=float(config.pipeline.min_gap_seconds),
         top_n=max_clips,
         media_duration=media_dur,
     )

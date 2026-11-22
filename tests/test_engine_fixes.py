@@ -105,10 +105,16 @@ def test_dead_chat_signal_weight_renormalization():
 
     # Chat is completely dead (all zeros)
     chat = np.zeros(duration, dtype=np.float32)
+    vad = np.zeros(duration, dtype=np.float32)
+    vad[45:60] = 1.0
+    pitch = np.zeros(duration, dtype=np.float32)
+    pitch[45:60] = 2.5
 
     signals_with_dead_chat = {
         "audio_rms": audio,
         "audio_onset": onset,
+        "audio_vad": vad,
+        "audio_pitch": pitch,
         "chat_velocity": chat,
     }
 
