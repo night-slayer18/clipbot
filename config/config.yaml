@@ -13,7 +13,7 @@ pipeline:
   max_clips_per_cycle: 10      # Max clips to render per run
   min_clip_duration: 25        # Seconds
   max_clip_duration: 60        # Seconds
-  min_gap_seconds: 60          # Minimum gap between two clips from the same source
+  min_gap_seconds: -1          # Adaptive gap sentinel (-1 = auto, 5% of stream length, capped 10–60s)
 
 scoring:
   profile: "gta6_chaos"        # Default scoring profile
