@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
+from loguru import logger
 
 from clipbot.core.config import load_profile
 from clipbot.core.models import Clip
@@ -163,6 +164,8 @@ def _expand_envelope(
     t_start = peak_idx
     max_left = max(0, peak_idx - max_dur // 2)
     while t_start > max_left:
+        if composite[t_start - 1] <= 0.0:
+            break
         if composite[t_start - 1] < floor_val:
             if vad is None or vad[t_start - 1] < 0.5:
                 break
@@ -172,6 +175,8 @@ def _expand_envelope(
     t_end = peak_idx + 1
     max_right = min(total_len, peak_idx + max_dur - (peak_idx - t_start) + 1)
     while t_end < max_right:
+        if composite[t_end] <= 0.0:
+            break
         if composite[t_end] < floor_val:
             if vad is None or vad[t_end] < 0.5:
                 if (t_end - t_start) >= min_dur:
@@ -182,30 +187,26 @@ def _expand_envelope(
     current_dur = t_end - t_start
     if current_dur < min_dur:
         needed = min_dur - current_dur
-        add_left = min(t_start, int(np.ceil(needed / 2.0)))
-        t_start -= add_left
-        needed -= add_left
+        # Prefer expanding rightward into positive activity before encroaching leftward
         add_right = min(total_len - t_end, needed)
         t_end += add_right
-        if t_end - t_start < min_dur and t_start > 0:
-            t_start = max(0, t_end - min_dur)
+        needed -= add_right
+        if needed > 0 and t_start > 0:
+            add_left = min(t_start, needed)
+            t_start -= add_left
 
     # Enforce max duration constraint
     if t_end - t_start > max_dur:
-        half = max_dur / 2.0
-        t_start = max(0, int(peak_idx - half))
-        t_end = min(total_len, t_start + max_dur)
-        if t_end - t_start > max_dur:
-            t_end = t_start + max_dur
+        t_end = t_start + max_dur
 
     start = float(max(0, t_start))
     end = float(min(total_len, t_end))
 
-    # Snap boundaries to natural speech pauses if VAD is present
+    # Snap boundaries to natural speech pauses if VAD is present without snapping into dead air
     if vad is not None and len(vad) > 0:
         snapped_start = _snap_to_vad_pause(start, vad[:total_len], search_window=2.5, is_end=False)
         snapped_end = _snap_to_vad_pause(end, vad[:total_len], search_window=2.5, is_end=True)
-        if min_dur <= snapped_end - snapped_start <= max_dur:
+        if composite[int(snapped_start)] > 0.0 and min_dur <= snapped_end - snapped_start <= max_dur:
             start = snapped_start
             end = snapped_end
 
@@ -249,10 +250,18 @@ def _passes_absolute_gate(
     impact = aligned.get("visual_impact")
     if impact is not None and len(impact) > e_idx:
         v = float(impact[s_idx:e_idx].max())
-        if v > 0.5:
+        rms = aligned.get("audio_rms")
+        vad = aligned.get("audio_vad")
+        # Visual impact only counts towards absolute gate if accompanied by audible reaction
+        has_sound = False
+        if rms is not None and len(rms) > e_idx:
+            has_sound = float(rms[s_idx:e_idx].mean()) > 0.015
+        if vad is not None and len(vad) > e_idx:
+            has_sound = has_sound or (float(vad[s_idx:e_idx].mean()) > 0.2)
+        if v > 0.5 and has_sound:
             fired.append("visual_impact")
         else:
-            missed.append(f"visual_impact(max={v:.4f})")
+            missed.append(f"visual_impact(max={v:.4f},audible={has_sound})")
 
     scene = aligned.get("visual_scene")
     if scene is not None and len(scene) > e_idx:
@@ -280,12 +289,22 @@ def _passes_absolute_gate(
         else:
             missed.append(f"transcript_hype(max={v:.4f})")
 
+    # Vocal pitch excitation: confirmed speech (VAD > 0.35) with elevated pitch (screaming, shouting, hype)
+    vad = aligned.get("audio_vad")
+    pitch = aligned.get("audio_pitch")
+    if vad is not None and pitch is not None and len(vad) > e_idx and len(pitch) > e_idx:
+        v_mean = float(vad[s_idx:e_idx].mean())
+        p_max = float(pitch[s_idx:e_idx].max())
+        med_p = float(np.median(pitch))
+        if v_mean > 0.35 and p_max > max(1.0, med_p * 1.8):
+            fired.append("audio_vocal_pitch")
+        else:
+            missed.append(f"audio_vocal_pitch(vad={v_mean:.2f},p_max={p_max:.2f})")
+
     passed = len(fired) >= min_gates_required
     if not passed:
-        import logging as _logging
-        _logging.getLogger("clipbot.scoring.combine").debug(
-            "[Gate] REJECT window [%d:%d] — fired=%s missed=%s (need %d)",
-            s_idx, e_idx, fired, missed, min_gates_required,
+        logger.debug(
+            f"[Gate] REJECT window [{s_idx}:{e_idx}] — fired={fired} (need {min_gates_required}) missed={missed}"
         )
     return passed
 
@@ -365,13 +384,30 @@ def score_and_window(
         target_dur = min(min_duration, target_len)
         effective_max = max_duration
         if min_gap < 0 and target_len > 0:
-            effective_gap = max(10.0, min(60.0, float(target_len) * 0.05))
+            effective_gap = max(10.0, min(25.0, float(target_len) * 0.02))
         else:
             effective_gap = max(0.0, min_gap)
 
     normalized: dict[str, np.ndarray] = {}
+    rms_arr = aligned.get("audio_rms")
+    vad_arr = aligned.get("audio_vad")
     for name, arr in aligned.items():
-        normalized[name] = _rolling_zscore(arr, window_size=600)
+        if name == "visual_impact":
+            # Sparse 0/1 pulses: use bounded raw signal gated by audible sound instead of
+            # rolling z-score (which inflates sparse 0/1 pulses to +3.0 to +4.5 std deviations).
+            raw_imp = np.clip(arr, 0.0, 1.0)
+            if rms_arr is not None or vad_arr is not None:
+                audible_mask = np.zeros(target_len, dtype=bool)
+                if rms_arr is not None:
+                    med_rms = float(np.median(rms_arr)) if len(rms_arr) > 0 else 0.01
+                    audible_mask |= (rms_arr > max(0.015, med_rms * 1.2))
+                if vad_arr is not None:
+                    audible_mask |= (vad_arr > 0.3)
+                normalized[name] = raw_imp * audible_mask.astype(np.float32)
+            else:
+                normalized[name] = raw_imp
+        else:
+            normalized[name] = _rolling_zscore(arr, window_size=600)
 
     composite = np.zeros(target_len, dtype=np.float32)
     for signal_name, z in normalized.items():
@@ -381,7 +417,16 @@ def score_and_window(
         composite += z * weight
 
     intermission = aligned.get("visual_intermission", np.zeros(target_len, dtype=np.float32))
-    composite[intermission > 0.5] = -999.0
+    vad = aligned.get("audio_vad")
+    if vad is not None and len(vad) == target_len:
+        # Hard suppress static screens only when nobody is speaking (BRB, idle menu, black screen).
+        # Use -3.0 instead of -999.0 so a momentary speech pause does not ruin the window mean by -40 points.
+        hard_intermission = (intermission > 0.5) & (vad < 0.5)
+        soft_intermission = (intermission > 0.5) & (vad >= 0.5)
+        composite[hard_intermission] = -3.0
+        composite[soft_intermission] -= 0.5
+    else:
+        composite[intermission > 0.5] = -3.0
 
     peak_min_dist = max(5, int(effective_gap * 0.5))
     peak_indices = _find_local_peaks(composite, min_distance=peak_min_dist, min_score=min_score_threshold)
@@ -423,7 +468,12 @@ def score_and_window(
         if not _passes_absolute_gate(aligned, s_idx, min(e_idx, target_len), min_gates_required=min_gates):
             continue
 
-        window_score = float(composite[s_idx:e_idx].mean())
+        window_mean = float(composite[s_idx:e_idx].mean())
+        peak_score = float(composite[p])
+        # Hybrid ranking: 50% peak strength + 50% window mean to preserve short viral bursts
+        window_score = 0.5 * peak_score + 0.5 * window_mean
+        if window_score <= 0.0:
+            continue
 
         breakdown = {
             name: float(normalized[name][s_idx:e_idx].mean())

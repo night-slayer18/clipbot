@@ -3,9 +3,11 @@ name: "gta6_chaos"
 description: "High-action GTA 6: Vice City police pursuits, shootouts, explosions, WASTED moments, Leonida chaos"
 
 signal_weights:
-  audio_rms: 0.35          # Screaming, sirens, explosions, supercars
-  chat_velocity: 0.30      # Chat spike on KEKW / 💀 / GTA 6 hype
-  visual_impact: 0.25      # High-impact damage or elimination screen detected
+  audio_rms: 0.30          # Screaming, sirens, explosions, supercars
+  audio_onset: 0.15        # Sudden loud sound transients, gunshots, impact thuds
+  audio_pitch: 0.10        # Vocal pitch spikes, screaming, laughing reactions
+  chat_velocity: 0.25      # Chat spike on KEKW / 💀 / GTA 6 hype
+  visual_impact: 0.10      # High-impact damage or elimination screen detected
   transcript_hype: 0.10    # 'Vice City', 'cops', 'wasted', 'run', 'shoot', 'busted'
 
 clip:
