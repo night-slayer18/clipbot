@@ -23,6 +23,9 @@ transcript_keywords:
   high: ["gta 6", "vice city", "wasted", "busted", "no way", "run", "shoot", "cops", "dead"]
   medium: ["leonida", "police", "officer", "get in", "helicopter", "swat"]
 
+scoring:
+  min_gates_required: 2      # Minimum distinct signals that must fire for a window to pass the absolute gate
+
 render:
   layout: "split_stack"    # Facecam on top + gameplay on bottom
   caption_style: "karaoke"

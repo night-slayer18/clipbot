@@ -119,7 +119,7 @@ def _find_local_peaks(signal: np.ndarray, min_distance: int, min_score: float) -
     padded_s = np.pad(signal, (1, 1), mode="edge")
     smoothed = np.convolve(padded_s, np.ones(3, dtype=np.float32) / 3.0, mode="valid")[:n]
 
-    edge_guard = max(1, min_distance)
+    edge_guard = max(1, min(10, min_distance))
 
     raw_peaks: list[int] = []
     for i in range(max(1, edge_guard), min(n - 1, n - edge_guard)):
@@ -216,12 +216,16 @@ def _passes_absolute_gate(
     aligned: dict[str, np.ndarray],
     s_idx: int,
     e_idx: int,
+    min_gates_required: int = 2,
 ) -> bool:
     """
     Absolute multi-signal gate to reject windows with no genuine activity.
-    Requires at least 2 distinct signals to demonstrate meaningful dynamic activity.
+    Requires at least min_gates_required distinct signals to fire before
+    a candidate is accepted. Logs which gates passed and which failed
+    for every rejected window to aid debugging.
     """
-    gates_passed = 0
+    fired: list[str] = []
+    missed: list[str] = []
 
     rms = aligned.get("audio_rms")
     if rms is not None and len(rms) > e_idx:
@@ -229,39 +233,61 @@ def _passes_absolute_gate(
         std = float(np.std(rms))
         w_mean = float(rms[s_idx:e_idx].mean())
         if std > 0.005 and w_mean > max(0.01, med * 1.5):
-            gates_passed += 1
+            fired.append("audio_rms")
+        else:
+            missed.append(f"audio_rms(w_mean={w_mean:.4f},med={med:.4f},std={std:.4f})")
 
     onset = aligned.get("audio_onset")
     if onset is not None and len(onset) > e_idx:
         med = float(np.median(onset))
         w_max = float(onset[s_idx:e_idx].max())
         if w_max > max(0.3, med * 2.0):
-            gates_passed += 1
+            fired.append("audio_onset")
+        else:
+            missed.append(f"audio_onset(w_max={w_max:.4f},med={med:.4f})")
 
     impact = aligned.get("visual_impact")
     if impact is not None and len(impact) > e_idx:
-        if float(impact[s_idx:e_idx].max()) > 0.5:
-            gates_passed += 1
+        v = float(impact[s_idx:e_idx].max())
+        if v > 0.5:
+            fired.append("visual_impact")
+        else:
+            missed.append(f"visual_impact(max={v:.4f})")
 
     scene = aligned.get("visual_scene")
     if scene is not None and len(scene) > e_idx:
         med = float(np.median(scene))
-        if float(scene[s_idx:e_idx].mean()) > max(0.05, med * 1.8):
-            gates_passed += 1
+        v = float(scene[s_idx:e_idx].mean())
+        if v > max(0.05, med * 1.8):
+            fired.append("visual_scene")
+        else:
+            missed.append(f"visual_scene(mean={v:.4f},med={med:.4f})")
 
     chat = aligned.get("chat_velocity")
     if chat is not None and len(chat) > e_idx:
         med = float(np.median(chat))
         w_max = float(chat[s_idx:e_idx].max())
         if w_max > max(1.0, med * 2.0):
-            gates_passed += 1
+            fired.append("chat_velocity")
+        else:
+            missed.append(f"chat_velocity(w_max={w_max:.4f},med={med:.4f})")
 
     hype = aligned.get("transcript_hype")
     if hype is not None and len(hype) > e_idx:
-        if float(hype[s_idx:e_idx].max()) > 0.0:
-            gates_passed += 1
+        v = float(hype[s_idx:e_idx].max())
+        if v > 0.0:
+            fired.append("transcript_hype")
+        else:
+            missed.append(f"transcript_hype(max={v:.4f})")
 
-    return gates_passed >= 2
+    passed = len(fired) >= min_gates_required
+    if not passed:
+        import logging as _logging
+        _logging.getLogger("clipbot.scoring.combine").debug(
+            "[Gate] REJECT window [%d:%d] — fired=%s missed=%s (need %d)",
+            s_idx, e_idx, fired, missed, min_gates_required,
+        )
+    return passed
 
 
 def score_and_window(
@@ -393,7 +419,8 @@ def score_and_window(
         if e_idx <= s_idx:
             continue
 
-        if not _passes_absolute_gate(aligned, s_idx, min(e_idx, target_len)):
+        min_gates = int(profile.get("scoring", {}).get("min_gates_required", 2))
+        if not _passes_absolute_gate(aligned, s_idx, min(e_idx, target_len), min_gates_required=min_gates):
             continue
 
         window_score = float(composite[s_idx:e_idx].mean())
