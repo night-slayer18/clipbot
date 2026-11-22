@@ -167,8 +167,8 @@ class FacecamDetector:
         std_x = float(np.std(xs))
         std_y = float(np.std(ys))
 
-        # Reject erratic motion (>15px std dev) indicating gameplay motion
-        if std_x > 15.0 or std_y > 15.0:
+        # Reject erratic motion (>20px std dev) indicating gameplay motion
+        if std_x > 20.0 or std_y > 20.0:
             logger.info(f"[Facecam] Rejected corner face in '{dominant_quadrant}': erratic motion (std_x={std_x:.1f}, std_y={std_y:.1f})")
             return None
 
@@ -221,9 +221,10 @@ class FacecamDetector:
         cam_w = (cam_w // 2) * 2
         cam_h = (cam_h // 2) * 2
 
-        # Calculate composite confidence score (0.0 - 1.0)
+        # Calculate composite confidence score (0.0 - 1.0).
+        # Jitter normalizer is 60px so that up to 4-6px of combined drift is negligible.
         detection_ratio = len(dominant_boxes) / sample_count
-        jitter_penalty = min(1.0, (std_x + std_y) / 25.0)
+        jitter_penalty = min(1.0, (std_x + std_y) / 60.0)
         confidence = float(np.clip(detection_ratio * (1.0 - jitter_penalty), 0.0, 1.0))
 
         logger.info(

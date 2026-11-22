@@ -149,6 +149,9 @@ class CaptionGenerator:
             except ImportError:
                 logger.warning("[Captions] faster-whisper not installed; subtitles unavailable")
                 return None
+            except Exception as exc:
+                logger.warning(f"[Captions] Whisper model failed to load ({exc}); subtitles disabled for this run")
+                return None
         return self._model
 
     async def generate_ass(
